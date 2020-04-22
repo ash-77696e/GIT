@@ -8,6 +8,18 @@
 #include <netinet/in.h>
 #include <netdb.h> 
 #include <string.h>
+#include <openssl/md5.h>
+
+
+typedef struct node
+{
+    char* status;
+    char* pathName;
+    char* versionNum;
+    unsigned char* hash;
+    struct node* next;
+
+} node;
 
 void error(char *msg)
 {
@@ -41,6 +53,18 @@ char* non_blocking_read(char* buffer, int fd)
     } while (status > 0);
     
     return buffer;
+}
+
+void non_blocking_write(char* buffer, int size, int fd)
+{
+    int status = 1;
+    int bytesWrote = 0;
+
+    do
+    {
+        status = write(fd, buffer+bytesWrote, size-bytesWrote);
+        bytesWrote += status;
+    } while (status > 0 && bytesWrote < size);
 }
 
 int create_socket()
@@ -108,6 +132,283 @@ int get_configure(char* IP, int* port)
     token = strtok(NULL, " ");
     *port = atoi(token);
     close(fd);
+}
+
+int isDirectoryExists(const char* path) 
+{
+    struct stat stats;
+    stat(path, &stats);
+
+    if(S_ISDIR(stats.st_mode))
+        return 1;
+    
+    return 0;
+}
+
+node* nullNode(node* tmp)
+{
+    tmp->status = NULL;
+    tmp->pathName = NULL;
+    tmp->versionNum = NULL;
+    tmp->hash = NULL;
+    tmp->next = NULL;
+    return tmp;
+}
+
+char* manifestLine(char* string, node* ptr)
+{
+    string = ptr->status;
+    strcat(string, "\t");
+    strcat(string, ptr->pathName);
+    strcat(string, "\t");
+    strcat(string, ptr->versionNum);
+    strcat(string, "\t");
+    strcat(string, ptr->hash);
+    strcat(string, "\n"); 
+    return string;
+}
+node* manifest_to_LL(int fd)
+{
+    int status;
+    int index = 0;
+    char temp = '?';
+    node* head = NULL;
+    char* buffer = malloc(sizeof(char));
+    int tabcount = 0;
+    node* ptr;
+    node* tmp = malloc(sizeof(node));
+    tmp = nullNode(tmp);
+
+    do
+    {
+        status = read(fd, &temp, sizeof(char)); 
+
+        if(status > 0)
+        {
+            if(temp == '\n')
+            {
+                char* tmpstr = realloc(buffer, sizeof(char) * (index + 2));
+                tmpstr[index + 1] = '\0'; // turns buffer into string
+                if(head == NULL) // first node of linked list should be manifest version
+                { 
+                    tmp = malloc(sizeof(node));
+                    tmp = nullNode(tmp);
+                    strcpy(tmp->versionNum, tmpstr);
+                    head = tmp;
+
+                    tmp = malloc(sizeof(node));
+                    tmp = nullNode(tmp);
+                }
+                else // add node to end of LL
+                {
+                    strcpy(tmp->hash, tmpstr); // no tab after hash, only newline so we assign it to the node here
+                    ptr = head;
+                    while(ptr->next != NULL){
+                        ptr = ptr->next;
+                    }
+                    ptr->next = tmp;
+                    tmp = malloc(sizeof(node));
+                    tmp = nullNode(tmp);
+                }
+                // reset buffer
+                index = 0;
+                buffer = malloc(sizeof(char));
+                continue;
+            }
+
+            else if(temp == '\t') // add to tmpNode / set field of tmpNode
+            {
+                char* tmpstr = realloc(buffer, sizeof(char) * (index + 2));
+                tmpstr[index + 1] = '\0'; // turns buffer into string
+                    
+                if(tabcount == 0) // status
+                {
+                    strcpy(tmp->status, tmpstr);
+                }  
+                if(tabcount == 1) // pathname
+                {
+                    strcpy(tmp->pathName, tmpstr);
+                }
+                if(tabcount == 2) // versionNum
+                {
+                    strcpy(tmp->versionNum, tmpstr);
+                }
+
+                // reset buffer
+                index = 0;
+                buffer = malloc(sizeof(char));
+                continue;
+            }
+            else // add to buffer if not tab or newline
+            { 
+                buffer[index] = temp;
+                index++;
+                char* tmpstr = realloc(buffer, sizeof(char) * (index + 1));
+                buffer = tmpstr;
+            }
+        }
+
+    } while(status > 0);
+    return head;
+}
+
+void LL_to_manifest(node* head, int fd)
+{
+    node* ptr = head;
+    while(ptr != NULL)
+    {
+        char* string = NULL;
+
+        if(ptr == head) // write manifest version and newline
+        {
+            strcpy(string, ptr->versionNum);
+            strcat(string, "\n");
+            non_blocking_write(string, strlen(string), fd);
+        }
+        else
+        {
+            strcpy(string, manifestLine(string, ptr));
+            non_blocking_write(string, strlen(string), fd);    
+        }
+        ptr = ptr->next;
+    }
+}
+int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
+{ 
+    if(!isDirectoryExists(projectName))
+    {
+        return 0; // project does not exist on client side
+    }
+    else{
+        int fd = open(fileName, O_RDONLY);
+
+        if(fd == -1)
+        {
+            printf("File does not exist");
+            return 0;
+        }  
+
+        node* head = manifest_to_LL(fd);
+        
+
+        // go through LL with fileName as key
+
+        node* ptr = head;
+        int modify = 0;
+        while(ptr != NULL){
+            if(strcmp(ptr->pathName, fileName) == 0) // match
+            {
+                strcpy(ptr->status, "M"); // modify
+                printf("File already in manifest");
+                modify = 1; // did not add 
+            }
+            ptr = ptr->next;
+
+        }  
+
+        if(ptr == NULL) // reached end of LL without matching
+        {
+            ptr = head;
+            while(ptr->next != NULL){
+                ptr = ptr->next;
+            }
+
+            int fd2 = open(fileName, O_RDONLY);
+            char* fileContents = NULL;
+            fileContents = non_blocking_read(fileContents, fd2);
+
+            /*md5 hash fileContents, make this hash into a string, 
+            then make a new node with status A, filename as pathname,
+            version as 0, and hash as the md5 hash string*/
+
+            unsigned char* result = malloc(sizeof(char) * strlen(fileContents));
+
+            MD5_CTX context;
+            MD5_Init(&context);
+            MD5_Update(&context, fileContents, strlen(fileContents));
+            MD5_Final(result, &context);
+            int i;
+            unsigned char resultstr[32];
+            for (i=0; i<16; i++) {
+                sprintf(resultstr, "%02x", result[i]);
+            }
+
+            node* resultNode = malloc(sizeof(node));
+            strcpy(resultNode->status, "A"); // add
+            strcpy(resultNode->pathName, fileName);
+            strcpy(resultNode->versionNum, "0");
+            strcpy(resultNode->hash, resultstr);
+
+            ptr->next = resultNode; // adds node that represents last line in manifest
+
+            close(fd2);
+        }
+
+        close(fd);
+        
+        // write contents back to .Manifest
+        fd = open("./.Manifest", O_WRONLY, O_TRUNC);
+        LL_to_manifest(head, fd);
+        
+        //free list
+        close(fd);
+        if(modify == 1) // did not add
+        {
+            return 0;
+        }
+        return 1; // successful add
+    }
+
+
+}
+
+int remove(char* projectName, char* fileName)
+{
+    if(!isDirectoryExists(projectName))
+    {
+        return 0; // project does not exist on client side
+    }
+    else
+    {
+        int fd = open(fileName, O_RDONLY);
+
+        if(fd == -1)
+        {
+            printf("File does not exist");
+            return 0;
+        }
+
+        node* head = manifest_to_LL(fd);
+        int removed = 0;
+        // go through LL with fileName as key
+        node* ptr = head;
+        while(ptr != NULL)
+        {
+            if(strcmp(ptr->pathName, fileName) == 0)
+            {
+                strcpy(ptr->status, "R");
+                removed = 1;
+                break;
+            }
+            ptr = ptr->next;
+        }
+
+        close(fd);
+
+        // write contents back to .Manifest
+        fd = open("./.Manifest", O_WRONLY, O_TRUNC);
+        LL_to_manifest(head, fd);
+        
+        //free list
+        close(fd);
+        if(removed == 0) // no match found
+        { 
+            printf("File not found in manifest");
+            return 0;
+        }
+        return 1;
+    }
+    
 }
 
 int main(int argc, char* argv[])
