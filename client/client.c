@@ -280,7 +280,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
         return 0; // project does not exist on client side
     }
     else{
-        int fd = open(fileName, O_RDONLY);
+        int fd = open("./.Manifest", O_RDONLY);
 
         if(fd == -1)
         {
@@ -312,15 +312,15 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
             while(ptr->next != NULL){
                 ptr = ptr->next;
             }
-
+            
             int fd2 = open(fileName, O_RDONLY);
             char* fileContents = NULL;
             fileContents = non_blocking_read(fileContents, fd2);
-
+            
             /*md5 hash fileContents, make this hash into a string, 
             then make a new node with status A, filename as pathname,
             version as 0, and hash as the md5 hash string*/
-
+            
             unsigned char* result = malloc(sizeof(char) * strlen(fileContents));
 
             MD5_CTX context;
@@ -342,6 +342,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
             ptr->next = resultNode; // adds node that represents last line in manifest
 
             close(fd2);
+            
         }
 
         close(fd);
@@ -362,7 +363,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
 
 }
 
-int remove(char* projectName, char* fileName)
+int Remove(char* projectName, char* fileName)
 {
     if(!isDirectoryExists(projectName))
     {
@@ -370,7 +371,7 @@ int remove(char* projectName, char* fileName)
     }
     else
     {
-        int fd = open(fileName, O_RDONLY);
+        int fd = open("./.Manifest", O_RDONLY);
 
         if(fd == -1)
         {
@@ -477,6 +478,31 @@ int main(int argc, char* argv[])
             free(serverResponse);
             close(sockFD);
         }
+
+        if(strcmp(argv[1], "add") == 0)
+        {
+            int success = add(argv[2], argv[3]);
+            if(success == 1)
+            {
+                printf("add successful");
+            }
+            else{
+                printf("add failed");
+            }
+        }
+
+        if(strcmp(argv[1], "remove") == 0)
+        {
+            int success = Remove(argv[2], argv[3]);
+            if(success == 1)
+            {
+                printf("add successful");
+            }
+            else{
+                printf("add failed");
+            }
+        }
+        
     }
 
     return 0;
