@@ -57,6 +57,34 @@ char* non_blocking_read(char* buffer, int fd)
     return buffer;
 }
 
+char* readMessage(char* buffer, int fd)
+{
+    int status = 0;
+    char temp = '\0';
+    char* sizeStr = (char*) malloc(sizeof(char)*2);
+    int index = 0;
+    bzero(sizeStr, index+2);
+
+    status = read(fd, &temp, 1);
+
+    while(temp != ':')
+    {
+        sizeStr[index] = temp;
+        index++;
+        char* tmp = (char*) realloc(sizeStr, index+1);
+        sizeStr = tmp;
+        sizeStr[index] = '\0';
+        status = read(fd, &temp, 1);
+    }
+
+    int size = atoi(sizeStr);
+    
+    char* msg = (char*) malloc(sizeof(char) * size+1);
+    bzero(msg, size+1);
+    read(fd, msg, size);
+    return msg;
+}
+
 int create(char* token, int clientfd)
 {
     token = strtok(NULL, ":");
@@ -99,10 +127,10 @@ int destroy(char* token, int clientfd)
 
 int socketStuff(int fd)
 { 
-    char* buffer = (char*) malloc(sizeof(char) * 100);
-    read(fd, buffer, 50);
-
+    char* buffer = readMessage(buffer, fd);
+    printf("%s\n", buffer);
     char* tokens = strtok(buffer, ":");
+    printf("%s\n", tokens);
     if(strcmp(tokens, "cr") == 0)
         create(tokens, fd);
     else if(strcmp(tokens, "de") == 0)

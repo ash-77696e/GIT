@@ -9,7 +9,7 @@
 #include <netdb.h> 
 #include <string.h>
 #include <openssl/md5.h>
-#include<errno.h>
+#include <errno.h>
 
 
 typedef struct node
@@ -158,7 +158,7 @@ node* nullNode(node* tmp)
 
 char* manifestLine(char* string, node* ptr)
 {
-    string = ptr->status;
+    strcpy(string, ptr->status);
     strcat(string, "\t");
     strcat(string, ptr->pathName);
     strcat(string, "\t");
@@ -290,7 +290,8 @@ void LL_to_manifest(node* head, int fd)
     node* ptr = head;
     while(ptr != NULL)
     {
-        char* string = malloc(sizeof(char) * 20);
+        char* string = malloc(sizeof(char) * 100);
+        bzero(string, 100);
 
         if(ptr == head) // write manifest version and newline
         {
@@ -306,6 +307,7 @@ void LL_to_manifest(node* head, int fd)
         ptr = ptr->next;
     }
 }
+
 int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
 { 
     if(!isDirectoryExists(projectName))
@@ -466,6 +468,30 @@ int Remove(char* projectName, char* fileName)
     
 }
 
+int numDigits(int num)
+{
+    int count = 0;
+    do
+    {
+        count++;
+        num /= 10;
+    } while (num != 0);
+
+    return count;
+}
+
+int sendMessage(char* cmd, int sockFD)
+{
+    int size = strlen(cmd);
+    char* msg = (char*) malloc(sizeof(char) * (size + numDigits(size) + 2));
+    bzero(msg, size + numDigits(size) + 2);
+    sprintf(msg, "%d:", size);
+    strcat(msg, cmd);
+    printf("%s\n", msg);
+    printf("%d\n", strlen(msg));
+    write(sockFD, msg, strlen(msg));
+}
+
 int main(int argc, char* argv[])
 {
     
@@ -483,7 +509,8 @@ int main(int argc, char* argv[])
             char* createCommand = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 4));
             bzero(createCommand, strlen(argv[2])+4);
             sprintf(createCommand, "cr:%s", argv[2]);
-            write(sockFD, createCommand, strlen(createCommand));
+            sendMessage(createCommand, sockFD);
+            
             char* serverResponse = (char*) malloc(sizeof(char) * 1000);
             read(sockFD, serverResponse, 1000);
             char* tokens = strtok(serverResponse, ":");
@@ -514,7 +541,8 @@ int main(int argc, char* argv[])
             char* deleteCommand = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 4));
             bzero(deleteCommand, strlen(argv[2]) + 4);
             sprintf(deleteCommand, "de:%s", argv[2]);
-            write(sockFD, deleteCommand, strlen(deleteCommand));
+            sendMessage(deleteCommand, sockFD);
+
             char* serverResponse = (char*) malloc(sizeof(char) * 1000);
             read(sockFD, serverResponse, 1000);
             char* tokens = strtok(serverResponse, ":");
