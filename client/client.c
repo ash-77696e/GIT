@@ -171,9 +171,22 @@ char* manifestLine(char* string, node* ptr)
 
 char* manifestPath(char* projectName)
 {
-    char* result = strcat(projectName, "/");
-    result = strcat(result, ".Manifest");
+    char* result = malloc(sizeof(char) * ( strlen(projectName) + 11));
+    bzero(result, strlen(projectName) + 11);
+    memcpy(result, projectName, strlen(projectName));
+    strcat(result, "/");
+    strcat(result, ".Manifest");
     return result;
+}
+
+char* filePath(char* projectName, char* fileName)
+{
+    char* result = malloc(sizeof(char) * ( strlen(projectName) + strlen(fileName) + 1));
+    bzero(result, strlen(projectName) + strlen(fileName) + 1 );
+    memcpy(result, projectName, strlen(projectName));
+    strcat(result, "/");
+    strcat(result, fileName);
+    return result; 
 }
 
 node* manifest_to_LL(int fd)
@@ -308,7 +321,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
 
         if(fd == -1)
         {
-            printf("File does not exist\n");
+            printf("Manifest does not exist\n");
             return 0;
         }  
 
@@ -320,7 +333,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
         node* ptr = head;
         int modify = 0;
         while(ptr != NULL){
-            if(strcmp(ptr->pathName, fileName) == 0) // match
+            if(strcmp(ptr->pathName, filePath(temp_project_name, fileName)) == 0) // match
             {
                 strcpy(ptr->status, "M"); // modify
                 printf("File already in manifest\n");
@@ -338,7 +351,12 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
                 ptr = ptr->next;
             }
             
-            int fd2 = open(fileName, O_RDONLY);
+            int fd2 = open(filePath(temp_project_name, fileName), O_RDONLY);
+            if(fd2 == -1)
+            {
+                printf("File does not exist\n");
+                return 0;
+            }
             char* fileContents = NULL;
             fileContents = non_blocking_read(fileContents, fd2);
             
@@ -347,6 +365,8 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
             version as 0, and hash as the md5 hash string*/
             
             unsigned char* result = malloc(sizeof(char) * strlen(fileContents));
+            char* hashedStr = (char*) malloc(sizeof(char) * 33);
+            bzero(hashedStr, 33);
 
             MD5_CTX context;
             MD5_Init(&context);
@@ -356,14 +376,15 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
             unsigned char resultstr[32];
             for (i=0; i<16; i++) {
                 sprintf(resultstr, "%02x", result[i]);
+                strcat(hashedStr, resultstr);
             }
 
             node* resultNode = malloc(sizeof(node));
             resultNode = nullNode(resultNode);
             strcpy(resultNode->status, "A"); // add
-            strcpy(resultNode->pathName, fileName);
+            strcpy(resultNode->pathName, filePath(temp_project_name, fileName));
             strcpy(resultNode->versionNum, "0");
-            strcpy(resultNode->hash, resultstr);
+            strcpy(resultNode->hash, hashedStr);
 
             ptr->next = resultNode; // adds node that represents last line in manifest
 
@@ -406,7 +427,7 @@ int Remove(char* projectName, char* fileName)
 
         if(fd == -1)
         {
-            printf("File does not exist\n");
+            printf("Manifest does not exist\n");
             return 0;
         }
 
@@ -417,7 +438,7 @@ int Remove(char* projectName, char* fileName)
         node* ptr = head;
         while(ptr != NULL)
         {
-            if(strcmp(ptr->pathName, fileName) == 0)
+            if(strcmp(ptr->pathName, filePath(temp_project_name, fileName)) == 0)
             {
                 strcpy(ptr->status, "R");
                 removed = 1;
