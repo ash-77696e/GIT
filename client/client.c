@@ -9,6 +9,7 @@
 #include <netdb.h> 
 #include <string.h>
 #include <openssl/md5.h>
+#include<errno.h>
 
 
 typedef struct node
@@ -147,10 +148,10 @@ int isDirectoryExists(const char* path)
 
 node* nullNode(node* tmp)
 {
-    tmp->status = NULL;
-    tmp->pathName = NULL;
-    tmp->versionNum = NULL;
-    tmp->hash = NULL;
+    tmp->status = malloc(sizeof(char) * 20);
+    tmp->pathName = malloc(sizeof(char) * 20);
+    tmp->versionNum = malloc(sizeof(char) * 20);
+    tmp->hash = malloc(sizeof(char) * 20);
     tmp->next = NULL;
     return tmp;
 }
@@ -167,6 +168,14 @@ char* manifestLine(char* string, node* ptr)
     strcat(string, "\n"); 
     return string;
 }
+
+char* manifestPath(char* projectName)
+{
+    char* result = strcat(projectName, "/");
+    result = strcat(result, ".Manifest");
+    return result;
+}
+
 node* manifest_to_LL(int fd)
 {
     int status;
@@ -187,7 +196,10 @@ node* manifest_to_LL(int fd)
         {
             if(temp == '\n')
             {
-                char* tmpstr = realloc(buffer, sizeof(char) * (index + 2));
+                char* tmpstr = malloc(sizeof(char) * (index+2));
+                bzero(tmpstr, index+2);
+                memcpy(tmpstr, buffer, index+1);
+                free(buffer);
                 tmpstr[index + 1] = '\0'; // turns buffer into string
                 if(head == NULL) // first node of linked list should be manifest version
                 { 
@@ -212,13 +224,17 @@ node* manifest_to_LL(int fd)
                 }
                 // reset buffer
                 index = 0;
+                tabcount = 0;
                 buffer = malloc(sizeof(char));
                 continue;
             }
 
             else if(temp == '\t') // add to tmpNode / set field of tmpNode
             {
-                char* tmpstr = realloc(buffer, sizeof(char) * (index + 2));
+                char* tmpstr = malloc(sizeof(char) * (index+2));
+                bzero(tmpstr, index+2);
+                memcpy(tmpstr, buffer, index+1);
+                free(buffer);
                 tmpstr[index + 1] = '\0'; // turns buffer into string
                     
                 if(tabcount == 0) // status
@@ -237,13 +253,17 @@ node* manifest_to_LL(int fd)
                 // reset buffer
                 index = 0;
                 buffer = malloc(sizeof(char));
+                tabcount++;
                 continue;
             }
             else // add to buffer if not tab or newline
             { 
                 buffer[index] = temp;
                 index++;
-                char* tmpstr = realloc(buffer, sizeof(char) * (index + 1));
+                char* tmpstr = malloc(sizeof(char) * (index + 1));
+                bzero(tmpstr, index + 1);
+                memcpy(tmpstr, buffer, index);
+                free(buffer);
                 buffer = tmpstr;
             }
         }
@@ -257,18 +277,18 @@ void LL_to_manifest(node* head, int fd)
     node* ptr = head;
     while(ptr != NULL)
     {
-        char* string = NULL;
+        char* string = malloc(sizeof(char) * 20);
 
         if(ptr == head) // write manifest version and newline
         {
             strcpy(string, ptr->versionNum);
             strcat(string, "\n");
-            non_blocking_write(string, strlen(string), fd);
+            write(fd, string, strlen(string));
         }
         else
         {
             strcpy(string, manifestLine(string, ptr));
-            non_blocking_write(string, strlen(string), fd);    
+            write(fd, string, strlen(string));    
         }
         ptr = ptr->next;
     }
@@ -280,11 +300,15 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
         return 0; // project does not exist on client side
     }
     else{
-        int fd = open("./.Manifest", O_RDONLY);
+        char* temp_file_name = malloc(sizeof(char) * 50);
+        strcpy(temp_file_name, fileName);
+        char* temp_project_name = malloc(sizeof(char) * 50);
+        strcpy(temp_project_name, projectName);
+        int fd = open(manifestPath(projectName), O_RDONLY);
 
         if(fd == -1)
         {
-            printf("File does not exist");
+            printf("File does not exist\n");
             return 0;
         }  
 
@@ -292,15 +316,16 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
         
 
         // go through LL with fileName as key
-
+        strcpy(fileName, temp_file_name);
         node* ptr = head;
         int modify = 0;
         while(ptr != NULL){
             if(strcmp(ptr->pathName, fileName) == 0) // match
             {
                 strcpy(ptr->status, "M"); // modify
-                printf("File already in manifest");
-                modify = 1; // did not add 
+                printf("File already in manifest\n");
+                modify = 1; // did not add
+                break; 
             }
             ptr = ptr->next;
 
@@ -334,6 +359,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
             }
 
             node* resultNode = malloc(sizeof(node));
+            resultNode = nullNode(resultNode);
             strcpy(resultNode->status, "A"); // add
             strcpy(resultNode->pathName, fileName);
             strcpy(resultNode->versionNum, "0");
@@ -348,7 +374,8 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
         close(fd);
         
         // write contents back to .Manifest
-        fd = open("./.Manifest", O_WRONLY, O_TRUNC);
+        strcpy(projectName, temp_project_name);
+        fd = open(manifestPath(projectName), O_RDWR | O_CREAT | O_TRUNC, 00600);
         LL_to_manifest(head, fd);
         
         //free list
@@ -371,17 +398,22 @@ int Remove(char* projectName, char* fileName)
     }
     else
     {
-        int fd = open("./.Manifest", O_RDONLY);
+        char* temp_file_name = malloc(sizeof(char) * 50);
+        strcpy(temp_file_name, fileName);
+        char* temp_project_name = malloc(sizeof(char) * 50);
+        strcpy(temp_project_name, projectName);
+        int fd = open(manifestPath(projectName), O_RDONLY);
 
         if(fd == -1)
         {
-            printf("File does not exist");
+            printf("File does not exist\n");
             return 0;
         }
 
         node* head = manifest_to_LL(fd);
         int removed = 0;
         // go through LL with fileName as key
+        strcpy(fileName, temp_file_name);
         node* ptr = head;
         while(ptr != NULL)
         {
@@ -397,14 +429,15 @@ int Remove(char* projectName, char* fileName)
         close(fd);
 
         // write contents back to .Manifest
-        fd = open("./.Manifest", O_WRONLY, O_TRUNC);
+        strcpy(projectName, temp_project_name);
+        fd = open(manifestPath(projectName), O_RDWR | O_CREAT | O_TRUNC, 00600);
         LL_to_manifest(head, fd);
         
         //free list
         close(fd);
         if(removed == 0) // no match found
         { 
-            printf("File not found in manifest");
+            printf("File not found in manifest\n");
             return 0;
         }
         return 1;
@@ -484,10 +517,10 @@ int main(int argc, char* argv[])
             int success = add(argv[2], argv[3]);
             if(success == 1)
             {
-                printf("add successful");
+                printf("add successful\n");
             }
             else{
-                printf("add failed");
+                printf("add failed\n");
             }
         }
 
@@ -496,10 +529,10 @@ int main(int argc, char* argv[])
             int success = Remove(argv[2], argv[3]);
             if(success == 1)
             {
-                printf("add successful");
+                printf("remove successful\n");
             }
             else{
-                printf("add failed");
+                printf("remove failed\n");
             }
         }
         
