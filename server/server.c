@@ -417,6 +417,7 @@ int checkout(char* token, int clientfd)
     int numFiles = 0;
     int totalFileLength = 0;
     FileNode* ptr = root;
+    
     while(ptr != NULL)
     {
         numFiles++;
@@ -429,12 +430,19 @@ int checkout(char* token, int clientfd)
     sprintf(response, "sf:%d:", numFiles);
     int i;
     ptr = root;
+
     while(ptr != NULL)
     {
-        char* path = (char*) malloc(sizeof(char) * (strlen(ptr->pathName) + 5));
-        bzero(path, strlen(ptr->pathName) + 5);
-        sprintf(path, "%s:", ptr->pathName);
-        strcat(response, path);
+        char* pathLenStr = (char*) malloc(sizeof(char) * (numDigits(strlen(ptr->pathName)) + 5));
+        bzero(pathLenStr, numDigits(strlen(ptr->pathName) + 5));
+        sprintf(pathLenStr, "%d:", strlen(ptr->pathName));
+        strcat(response, pathLenStr);
+        strcat(response, ptr->pathName);
+        strcat(response, ":");
+        char* contentsLenStr = (char*) malloc(sizeof(char) * (numDigits(strlen(ptr->contents)) + 5));
+        bzero(contentsLenStr, numDigits(strlen(ptr->contents)) + 5);
+        sprintf(contentsLenStr, "%d:", strlen(ptr->contents));
+        strcat(response, contentsLenStr);
         strcat(response, ptr->contents);
         strcat(response, ":");
         ptr = ptr->next;

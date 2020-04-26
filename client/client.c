@@ -619,34 +619,57 @@ void createSentFiles(char* buffer)
     for(ind = 0; ind < numFiles; ind++)
     {
         i = 0;
-        char* path = (char*) malloc(sizeof(char) * (i+1));
-        //printf("%c\n", buffer[bufferIndex]);
+        char* pathSizeStr = (char*) malloc(sizeof(char) * (i+1));
         while(buffer[bufferIndex] != ':')
         {
-            path[i] = buffer[bufferIndex];
+            pathSizeStr[i] = buffer[bufferIndex];
             i++;
             bufferIndex++;
-            char* t = realloc(path, i+1);
-            path = t;
-            path[i] = '\0';
+            char* t = realloc(pathSizeStr, i+1);
+            pathSizeStr = t;
+            pathSizeStr[i] = '\0';
+        }
+        bufferIndex++;
+        int pathSize = atoi(pathSizeStr);
+        free(pathSizeStr);
+
+        char* path = (char*) malloc(sizeof(char) * (pathSize+1));
+        bzero(path, pathSize+1);
+        for(i = 0; i < pathSize; i++)
+        {
+            path[i] = buffer[bufferIndex];
+            bufferIndex++;
         }
         bufferIndex++;
         makePath(path);
         i = 0;
-        char* data = (char*) malloc(sizeof(char) * (i+1));
+        char* dataSizeStr = (char*) malloc(sizeof(char) * (i+1));
         while(buffer[bufferIndex] != ':')
         {
-            data[i] = buffer[bufferIndex];
+            dataSizeStr[i] = buffer[bufferIndex];
             i++;
             bufferIndex++;
-            char* t = realloc(data, i+1);
-            data = t;
-            data[i] = '\0';
+            char* t = realloc(dataSizeStr, i+1);
+            dataSizeStr = t;
+            dataSizeStr[i] = '\0';
+        }
+        bufferIndex++;
+        int dataSize = atoi(dataSizeStr);
+        free(dataSizeStr);
+        char* data = (char*) malloc(sizeof(char) * (dataSize + 1));
+        bzero(data, dataSize+1);
+        printf("%d\n", dataSize);
+        for(i = 0; i < dataSize; i++)
+        {
+            data[i] = buffer[bufferIndex];
+            bufferIndex++;
         }
         bufferIndex++;
         int fd = open(path, O_RDWR | O_CREAT, 00600);
         write(fd, data, strlen(data));
         close(fd);
+        free(data);
+        free(path);
     }
 }
 
@@ -777,6 +800,8 @@ int main(int argc, char* argv[])
             bzero(coCommand, strlen(argv[2]) + 4);
             sprintf(coCommand, "co:%s", argv[2]);
             sendMessage(coCommand, sockFD);
+            free(coCommand);
+
             char* serverResponse = readMessage(serverResponse, sockFD);
             char* tokens = strtok(serverResponse, ":");
             printf("%s\n", serverResponse);
@@ -786,6 +811,7 @@ int main(int argc, char* argv[])
                 createSentFiles(&serverResponse[3]);
             }
             close(sockFD);
+            free(serverResponse);
         }
         
     }
