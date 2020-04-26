@@ -6,13 +6,50 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <dirent.h>
 #include <netdb.h> 
 #include <string.h>
+
+typedef struct node
+{
+    char* status;
+    char* pathName;
+    char* versionNum;
+    unsigned char* hash;
+    struct node* next;
+
+} node;
+
+typedef struct FileNode
+{
+    char* pathName;
+    char* contents;
+    int size;
+    struct FileNode* next;
+} FileNode;
 
 void error(char *msg)
 {
     perror(msg);
     exit(1);
+}
+
+int getFileSize(char* path)
+{
+    int fd = open(path, O_RDONLY);
+    int size = lseek(fd, 0, SEEK_END);
+    close(fd);
+    return size;
+}
+
+node* nullNode(node* tmp)
+{
+    tmp->status = malloc(sizeof(char) * 20);
+    tmp->pathName = malloc(sizeof(char) * 20);
+    tmp->versionNum = malloc(sizeof(char) * 20);
+    tmp->hash = malloc(sizeof(char) * 20);
+    tmp->next = NULL;
+    return tmp;
 }
 
 int isDirectoryExists(const char* path)
@@ -26,12 +63,10 @@ int isDirectoryExists(const char* path)
     return 0;
 }
 
-char* non_blocking_read(char* buffer, int fd)
+char* readFile(char* buffer, int fd)
 {
-    printf("here");
-    //int bufferSize = 2;
-    int bufferSize = 100;
-    //buffer = (char*) malloc(sizeof(char) * bufferSize);
+    int bufferSize = 10;
+    buffer = (char*) malloc(sizeof(char) * bufferSize);
     bzero(buffer, bufferSize);
 
     int status = 1;
@@ -56,6 +91,117 @@ char* non_blocking_read(char* buffer, int fd)
     
     return buffer;
 }
+
+int numDigits(int num)
+{
+    int count = 0;
+    do
+    {
+        count++;
+        num /= 10;
+    } while (num != 0);
+
+    return count;
+}
+
+node* manifest_to_LL(int fd)
+{
+    int status;
+    int index = 0;
+    char temp = '?';
+    node* head = NULL;
+    char* buffer = malloc(sizeof(char));
+    int tabcount = 0;
+    node* ptr;
+    node* tmp = malloc(sizeof(node));
+    tmp = nullNode(tmp);
+
+    do
+    {
+        status = read(fd, &temp, sizeof(char)); 
+
+        if(status > 0)
+        {
+            if(temp == '\n')
+            {
+                char* tmpstr = malloc(sizeof(char) * (index+2));
+                bzero(tmpstr, index+2);
+                memcpy(tmpstr, buffer, index+1);
+                free(buffer);
+                tmpstr[index + 1] = '\0'; // turns buffer into string
+                if(head == NULL) // first node of linked list should be manifest version
+                { 
+                    tmp = malloc(sizeof(node));
+                    tmp = nullNode(tmp);
+                    strcpy(tmp->versionNum, tmpstr);
+                    head = tmp;
+
+                    tmp = malloc(sizeof(node));
+                    tmp = nullNode(tmp);
+                }
+                else // add node to end of LL
+                {
+                    strcpy(tmp->hash, tmpstr); // no tab after hash, only newline so we assign it to the node here
+                    ptr = head;
+                    while(ptr->next != NULL){
+                        ptr = ptr->next;
+                    }
+                    ptr->next = tmp;
+                    tmp = malloc(sizeof(node));
+                    tmp = nullNode(tmp);
+                }
+                // reset buffer
+                index = 0;
+                tabcount = 0;
+                buffer = malloc(sizeof(char));
+                continue;
+            }
+
+            else if(temp == '\t') // add to tmpNode / set field of tmpNode
+            {
+                char* tmpstr = malloc(sizeof(char) * (index+2));
+                bzero(tmpstr, index+2);
+                memcpy(tmpstr, buffer, index+1);
+                free(buffer);
+                tmpstr[index + 1] = '\0'; // turns buffer into string
+                    
+                if(tabcount == 0) // status
+                {
+                    strcpy(tmp->status, tmpstr);
+                }  
+                if(tabcount == 1) // pathname
+                {
+                    strcpy(tmp->pathName, tmpstr);
+                }
+                if(tabcount == 2) // versionNum
+                {
+                    strcpy(tmp->versionNum, tmpstr);
+                }
+
+                // reset buffer
+                index = 0;
+                buffer = malloc(sizeof(char));
+                tabcount++;
+                continue;
+            }
+            else // add to buffer if not tab or newline
+            { 
+                buffer[index] = temp;
+                index++;
+                char* tmpstr = malloc(sizeof(char) * (index + 1));
+                bzero(tmpstr, index + 1);
+                memcpy(tmpstr, buffer, index);
+                free(buffer);
+                buffer = tmpstr;
+            }
+        }
+
+    } while(status > 0);
+
+    return head;
+}
+
+
 
 char* readMessage(char* buffer, int fd)
 {
@@ -85,13 +231,77 @@ char* readMessage(char* buffer, int fd)
     return msg;
 }
 
+int sendMessage(char* cmd, int sockFD)
+{
+    int size = strlen(cmd);
+    char* msg = (char*) malloc(sizeof(char) * (size + numDigits(size) + 2));
+    bzero(msg, size + numDigits(size) + 2);
+    sprintf(msg, "%d:", size);
+    strcat(msg, cmd);
+    write(sockFD, msg, strlen(msg));
+}
+
+void createFileLL(char* basePath, FileNode** fileRoot)
+{
+    DIR* dir = opendir(basePath);
+    readdir(dir);
+    readdir(dir);
+
+    char path[20000];
+    bzero(path, 20000);
+    struct dirent* entry;
+
+    while((entry = readdir(dir)) != NULL)
+    {
+        strcpy(path, basePath);
+        if(path[strlen(path)-1] != '/')
+            strcat(path, "/");
+        strcat(path, entry->d_name);
+        if(isDirectoryExists(path))
+            createFileLL(path, fileRoot);
+        else
+        {
+            if(fileRoot == NULL)
+            {
+                int fd = open(path, O_RDONLY);
+                char* fileRootPath = (char*) malloc(sizeof(char) * (strlen(path) + 1));
+                bzero(fileRootPath, strlen(path) + 1);
+                strcpy(fileRootPath, path);
+                (*fileRoot) = (FileNode*) malloc(sizeof(FileNode));
+                (*fileRoot)->pathName = fileRootPath;
+                (*fileRoot)->next = NULL;
+                (*fileRoot)->contents = readFile((*fileRoot)->contents, fd);
+                close(fd);
+                (*fileRoot)->size = getFileSize(path);
+            }
+            else
+            {
+                int fd = open(path, O_RDONLY);
+                char* fileRootPath = (char*) malloc(sizeof(char) * (strlen(path) + 1));
+                bzero(fileRootPath, strlen(path) + 1);
+                strcpy(fileRootPath, path);
+                FileNode* node = (FileNode*) malloc(sizeof(FileNode));
+                node->pathName = fileRootPath;
+                node->contents = readFile(node->contents, fd);
+                close(fd);
+                node->size = getFileSize(path);
+                node->next = *fileRoot;
+                *fileRoot = node;           
+            }
+            
+        }
+        
+    }
+
+    closedir(dir);
+}
+
 int create(char* token, int clientfd)
 {
-    token = strtok(NULL, ":");
+    token = &token[3];
     if(isDirectoryExists(token))
     {
-        write(clientfd, "er:Directory exists on server", 29);
-        return -1;
+        sendMessage("er:Directory exists on server", clientfd);
     }
     mkdir(token, 00777);
     char* manifestPath = (char*) malloc(sizeof(char) * (strlen(token) + 12));
@@ -101,40 +311,153 @@ int create(char* token, int clientfd)
     int fd = open(manifestPath, O_RDWR | O_CREAT | O_TRUNC, 00600);
     write(fd, "0\n", 2);
     close(fd);
+
     char response[50];
     bzero(response, 50);
-    sprintf(response, "sf:1:%s/.Manifest:0\n\0", token);
-    write(clientfd, response, strlen(response));
+    sprintf(response, "sc");
+    sendMessage(response, clientfd);
+
     free(manifestPath);
     return 0;
 }
 
 int destroy(char* token, int clientfd)
 {
-    token = strtok(NULL, ":");
+    token = &token[3];
     if(!isDirectoryExists(token))
     {
-        write(clientfd, "er:Directory does not exist on server", 38);
+        sendMessage("er:Directory does not exist on server", clientfd);
         return -1;
     }
+
     char* destroyCmd = (char*) malloc(sizeof(char) * (strlen(token) + 20));
     bzero(destroyCmd, strlen(token) + 20);
     sprintf(destroyCmd, "rm -rf \"%s\"", token);
-    printf("%s\n", destroyCmd);
     system(destroyCmd);
-    write(clientfd, "sc", 2);
+    sendMessage("sc", clientfd);
+}
+
+int currentversion(char* token, int clientfd)
+{
+    token = &token[3];
+    if(!isDirectoryExists(token))
+    {
+        sendMessage("er:Directory does not exist on server", clientfd);
+        return -1;
+    }
+    char* manifestPath = (char*) malloc(sizeof(char) * (strlen(token) + 13));
+    bzero(manifestPath, strlen(token)+13);
+    sprintf(manifestPath, "%s/.Manifest", token);
+    
+    int manifestFD = open(manifestPath, O_RDONLY);
+
+    node* head = manifest_to_LL(manifestFD);
+    node* ptr = head;
+
+    int len = 2;
+    char* buffer = (char*) malloc(sizeof(char) * len);
+    bzero(buffer, len);
+
+    while(ptr != NULL)
+    {
+        if(ptr == head)
+        {
+            int vLen = strlen(ptr->versionNum) + 5;
+            char* tmp = (char*) malloc(sizeof(char) * (len + vLen));
+            bzero(tmp, len+vLen);
+            memcpy(tmp, buffer, len);
+            len += vLen;
+            free(buffer);
+            buffer = tmp;
+            strcat(buffer, ptr->versionNum);
+            strcat(buffer, "\n");
+        }
+
+        else if(ptr->pathName != NULL)
+        {
+            int pLen = strlen(ptr->pathName) + 5;
+            char* tmp = (char*) malloc(sizeof(char) * (len + pLen));
+            bzero(tmp, len+pLen);
+            memcpy(tmp, buffer, len);
+            len += pLen;
+            free(buffer);
+            buffer = tmp;
+            strcat(buffer, ptr->pathName);
+            strcat(buffer,"\t");
+        
+            int vLen = strlen(ptr->versionNum) + 5;
+            tmp = (char*) malloc(sizeof(char) * (len + vLen));
+            bzero(tmp, len+vLen);
+            memcpy(tmp, buffer, len);
+            len += vLen;
+            free(buffer);
+            buffer = tmp;
+            printf("%s\n", ptr->versionNum);
+            strcat(buffer, ptr->versionNum);
+            strcat(buffer, "\n");
+        }
+
+        ptr = ptr->next;
+    }
+
+    char* message = (char*) malloc(sizeof(char) * (strlen(buffer) + 10));
+    bzero(message, strlen(buffer) + 10);
+    sprintf(message, "sc:%s", buffer);
+    sendMessage(message, clientfd);
+
+    close(manifestFD);
+    free(buffer);
+}
+
+int checkout(char* token, int clientfd)
+{
+    token = &token[3];
+    FileNode* root = NULL;
+    createFileLL(token, &root);
+    int numFiles = 0;
+    int totalFileLength = 0;
+    FileNode* ptr = root;
+    while(ptr != NULL)
+    {
+        numFiles++;
+        totalFileLength += (ptr->size + numDigits(ptr->size) + 5 + strlen(ptr->pathName) + numDigits(strlen(ptr->pathName)));
+        ptr = ptr->next;
+    }
+
+    char* response = (char*) malloc(sizeof(char) * (totalFileLength + (numFiles * 5)));
+    bzero(response, totalFileLength + (numFiles*5));
+    sprintf(response, "sf:%d:", numFiles);
+    int i;
+    ptr = root;
+    while(ptr != NULL)
+    {
+        char* path = (char*) malloc(sizeof(char) * (strlen(ptr->pathName) + 5));
+        bzero(path, strlen(ptr->pathName) + 5);
+        sprintf(path, "%s:", ptr->pathName);
+        strcat(response, path);
+        strcat(response, ptr->contents);
+        strcat(response, ":");
+        ptr = ptr->next;
+    }
+    
+    printf("%s\n", response);
+    sendMessage(response, clientfd);
+    free(response);
 }
 
 int socketStuff(int fd)
 { 
     char* buffer = readMessage(buffer, fd);
-    printf("%s\n", buffer);
     char* tokens = strtok(buffer, ":");
-    printf("%s\n", tokens);
+
     if(strcmp(tokens, "cr") == 0)
-        create(tokens, fd);
+        create(buffer, fd);
     else if(strcmp(tokens, "de") == 0)
-        destroy(tokens, fd);
+        destroy(buffer, fd);
+    else if(strcmp(tokens, "cv") == 0)
+        currentversion(buffer, fd);
+    else if(strcmp(tokens, "co") == 0)
+        checkout(buffer, fd);
     
     printf("Client: %d disconnected\n", fd);
     close(fd);

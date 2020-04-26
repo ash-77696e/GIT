@@ -4,13 +4,13 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <dirent.h>
 #include <sys/stat.h>
 #include <netinet/in.h>
 #include <netdb.h> 
 #include <string.h>
 #include <openssl/md5.h>
 #include <errno.h>
-
 
 typedef struct node
 {
@@ -19,8 +19,15 @@ typedef struct node
     char* versionNum;
     unsigned char* hash;
     struct node* next;
-
 } node;
+
+typedef struct FileNode
+{
+    char* pathName;
+    char* contents;
+    int size;
+    struct FileNode* next;
+} FileNode;
 
 void error(char *msg)
 {
@@ -28,7 +35,7 @@ void error(char *msg)
     exit(0);
 }
 
-char* non_blocking_read(char* buffer, int fd)
+char* readFile(char* buffer, int fd)
 {
     int bufferSize = 256;
     buffer = (char*) malloc(sizeof(char) * bufferSize);
@@ -54,18 +61,6 @@ char* non_blocking_read(char* buffer, int fd)
     } while (status > 0);
     
     return buffer;
-}
-
-void non_blocking_write(char* buffer, int size, int fd)
-{
-    int status = 1;
-    int bytesWrote = 0;
-
-    do
-    {
-        status = write(fd, buffer+bytesWrote, size-bytesWrote);
-        bytesWrote += status;
-    } while (status > 0 && bytesWrote < size);
 }
 
 int create_socket()
@@ -360,7 +355,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
                 return 0;
             }
             char* fileContents = NULL;
-            fileContents = non_blocking_read(fileContents, fd2);
+            fileContents = readFile(fileContents, fd2);
             
             /*md5 hash fileContents, make this hash into a string, 
             then make a new node with status A, filename as pathname,
@@ -492,9 +487,171 @@ int sendMessage(char* cmd, int sockFD)
     write(sockFD, msg, strlen(msg));
 }
 
+char* readMessage(char* buffer, int fd)
+{
+    int status = 0;
+    char temp = '\0';
+    char* sizeStr = (char*) malloc(sizeof(char)*2);
+    int index = 0;
+    bzero(sizeStr, index+2);
+
+    status = read(fd, &temp, 1);
+
+    while(temp != ':')
+    {
+        sizeStr[index] = temp;
+        index++;
+        char* tmp = (char*) realloc(sizeStr, index+1);
+        sizeStr = tmp;
+        sizeStr[index] = '\0';
+        status = read(fd, &temp, 1);
+    }
+
+    int size = atoi(sizeStr);
+    
+    char* msg = (char*) malloc(sizeof(char) * size+1);
+    bzero(msg, size+1);
+    read(fd, msg, size);
+    return msg;
+}
+
+void makePath(char* filePath)
+{
+    char* endIndex = strrchr(filePath, '/');
+    char* dirPath = (char*) malloc(sizeof(char) * strlen(filePath));
+    bzero(dirPath, strlen(filePath));
+    while(filePath != endIndex)
+    {
+        char* c = (char*) malloc(sizeof(char) * 2);
+        c[0] = *filePath;
+        c[1] = '\0';
+        strcat(dirPath, c);
+        filePath++;
+    }
+    char* command = (char*) malloc(sizeof(char) * (strlen(dirPath) + 10));
+    bzero(command, strlen(dirPath) + 10);
+    sprintf(command, "mkdir -p %s", dirPath);
+    system(command);
+}
+
+int getFileSize(char* path)
+{
+    int fd = open(path, O_RDONLY);
+    int size = lseek(fd, 0, SEEK_END);
+    close(fd);
+    return size;
+}
+
+void createFileLL(char* basePath, FileNode** fileRoot)
+{
+    DIR* dir = opendir(basePath);
+    readdir(dir);
+    readdir(dir);
+
+    char path[20000];
+    bzero(path, 20000);
+    struct dirent* entry;
+
+    while((entry = readdir(dir)) != NULL)
+    {
+        strcpy(path, basePath);
+        if(path[strlen(path)-1] != '/')
+            strcat(path, "/");
+        strcat(path, entry->d_name);
+        if(isDirectoryExists(path))
+            createFileLL(path, fileRoot);
+        else
+        {
+            if(fileRoot == NULL)
+            {
+                int fd = open(path, O_RDONLY);
+                char* fileRootPath = (char*) malloc(sizeof(char) * (strlen(path) + 1));
+                bzero(fileRootPath, strlen(path) + 1);
+                strcpy(fileRootPath, path);
+                (*fileRoot) = (FileNode*) malloc(sizeof(FileNode));
+                (*fileRoot)->pathName = fileRootPath;
+                (*fileRoot)->next = NULL;
+                (*fileRoot)->contents = readFile((*fileRoot)->contents, fd);
+                close(fd);
+                (*fileRoot)->size = getFileSize(path);
+            }
+            else
+            {
+                int fd = open(path, O_RDONLY);
+                char* fileRootPath = (char*) malloc(sizeof(char) * (strlen(path) + 1));
+                bzero(fileRootPath, strlen(path) + 1);
+                strcpy(fileRootPath, path);
+                FileNode* node = (FileNode*) malloc(sizeof(FileNode));
+                node->pathName = fileRootPath;
+                node->contents = readFile(node->contents, fd);
+                close(fd);
+                node->size = getFileSize(path);
+                node->next = *fileRoot;
+                *fileRoot = node;           
+            }
+            
+        }
+        
+    }
+
+    closedir(dir);
+}
+
+void createSentFiles(char* buffer)
+{
+    char numFilesStr[5];
+    bzero(numFilesStr, 5);
+    int bufferIndex = 0;
+    int i = 0;
+
+    while(buffer[bufferIndex] != ':')
+    {
+        numFilesStr[i] = buffer[bufferIndex];
+        bufferIndex++;
+        i++;
+    }
+
+    bufferIndex++;
+
+    int numFiles = atoi(numFilesStr);
+    
+    int ind = 0;
+    for(ind = 0; ind < numFiles; ind++)
+    {
+        i = 0;
+        char* path = (char*) malloc(sizeof(char) * (i+1));
+        //printf("%c\n", buffer[bufferIndex]);
+        while(buffer[bufferIndex] != ':')
+        {
+            path[i] = buffer[bufferIndex];
+            i++;
+            bufferIndex++;
+            char* t = realloc(path, i+1);
+            path = t;
+            path[i] = '\0';
+        }
+        bufferIndex++;
+        makePath(path);
+        i = 0;
+        char* data = (char*) malloc(sizeof(char) * (i+1));
+        while(buffer[bufferIndex] != ':')
+        {
+            data[i] = buffer[bufferIndex];
+            i++;
+            bufferIndex++;
+            char* t = realloc(data, i+1);
+            data = t;
+            data[i] = '\0';
+        }
+        bufferIndex++;
+        int fd = open(path, O_RDWR | O_CREAT, 00600);
+        write(fd, data, strlen(data));
+        close(fd);
+    }
+}
+
 int main(int argc, char* argv[])
 {
-    
     if(argc > 1) 
     {
         if(strcmp(argv[1], "configure") == 0)
@@ -504,25 +661,25 @@ int main(int argc, char* argv[])
 
         if(strcmp(argv[1], "create") == 0)
         {
-            mkdir(argv[2], 00777);
             int sockFD = create_socket();
             char* createCommand = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 4));
             bzero(createCommand, strlen(argv[2])+4);
             sprintf(createCommand, "cr:%s", argv[2]);
             sendMessage(createCommand, sockFD);
             
-            char* serverResponse = (char*) malloc(sizeof(char) * 1000);
-            read(sockFD, serverResponse, 1000);
+            char* serverResponse = readMessage(serverResponse, sockFD);
+
             char* tokens = strtok(serverResponse, ":");
-            if(strcmp(tokens, "sf") == 0)
+            if(strcmp(tokens, "sc") == 0)
             {
-                tokens = strtok(NULL, ":");
-                int numFiles = atoi(tokens);
-                tokens = strtok(NULL, ":");
-                int fd = open(tokens, O_RDWR | O_CREAT, 00600);
-                tokens = strtok(NULL, ":");
-                write(fd, tokens, strlen(tokens));
+                mkdir(argv[2], 00777);
+                char* path = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 20));
+                sprintf(path, "%s/.Manifest", argv[2]);
+                printf("%s\n", path);
+                int fd = open(path, O_RDWR | O_CREAT, 00600);
+                write(fd, "0\n", 2);
                 printf("Create command completed\n");
+                close(fd);
             }
             else if(strcmp(tokens, "er") == 0)
             {
@@ -583,6 +740,52 @@ int main(int argc, char* argv[])
             else{
                 printf("remove failed\n");
             }
+        }
+
+        if(strcmp(argv[1], "currentversion") == 0)
+        {
+            int sockFD = create_socket();
+            char* cvCommand = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 4));
+            bzero(cvCommand, strlen(argv[2]) + 4);
+            sprintf(cvCommand, "cv:%s", argv[2]);
+            sendMessage(cvCommand, sockFD);
+            char* serverResponse = readMessage(serverResponse, sockFD);
+            char* tokens = strtok(serverResponse, ":");
+            if(strcmp(tokens, "sc") == 0)
+            {
+                printf("Current version:\n");
+                printf("%s", &serverResponse[3]);
+            }
+            else if(strcmp(tokens, "er") == 0)
+            {
+                tokens = strtok(NULL, ":");
+                printf("Error: %s\n", tokens);
+            }
+
+            close(sockFD);
+        }
+
+        if(strcmp(argv[1], "checkout") == 0)
+        {
+            if(isDirectoryExists(argv[2]))
+            {
+                printf("Error: Project already exists on client\n");
+                return 0;
+            }
+            int sockFD = create_socket();
+            char* coCommand = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 4));
+            bzero(coCommand, strlen(argv[2]) + 4);
+            sprintf(coCommand, "co:%s", argv[2]);
+            sendMessage(coCommand, sockFD);
+            char* serverResponse = readMessage(serverResponse, sockFD);
+            char* tokens = strtok(serverResponse, ":");
+            printf("%s\n", serverResponse);
+            if(strcmp(tokens, "sf") == 0)
+            {
+                printf("Checkout successful\n");
+                createSentFiles(&serverResponse[3]);
+            }
+            close(sockFD);
         }
         
     }
