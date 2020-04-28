@@ -453,6 +453,21 @@ int checkout(char* token, int clientfd)
     free(response);
 }
 
+int commit(char* token, int clientfd)
+{
+    token = &token[3];
+    char* manifestPath = (char*) malloc(sizeof(char) * (strlen(token) + 15));
+    bzero(manifestPath, strlen(token)+15);
+    sprintf(manifestPath, "%s/.Manifest", token);
+    int manifestFD = open(manifestPath, O_RDONLY);
+    char* manifestContents = readFile(manifestContents, manifestFD);
+    close(manifestFD);
+    char* message = (char*) malloc(sizeof(char) * (strlen(manifestContents) + 10));
+    bzero(message, strlen(manifestContents) + 10);
+    sprintf(message, "sc:%s", manifestContents);
+    sendMessage(message, clientfd);
+}
+
 int socketStuff(int fd)
 { 
     char* buffer = readMessage(buffer, fd);
@@ -466,6 +481,8 @@ int socketStuff(int fd)
         currentversion(buffer, fd);
     else if(strcmp(tokens, "co") == 0)
         checkout(buffer, fd);
+    else if(strcmp(tokens, "cm") == 0)
+        commit(buffer, fd);
     
     printf("Client: %d disconnected\n", fd);
     close(fd);

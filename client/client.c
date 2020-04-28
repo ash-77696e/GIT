@@ -813,6 +813,23 @@ int main(int argc, char* argv[])
             close(sockFD);
             free(serverResponse);
         }
+
+        if(strcmp(argv[1], "commit") == 0)
+        {
+            if(!isDirectoryExists(argv[2]))
+            {
+                printf("Error: project does not exist\n");
+                return 0;
+            }
+            int sockFD = create_socket();
+            char* cmCommand = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 4));
+            bzero(cmCommand, strlen(argv[2]) + 4);
+            sprintf(cmCommand, "cm:%s", argv[2]);
+            sendMessage(cmCommand, sockFD);
+            char* serverResponse = readMessage(serverResponse, sockFD);
+            printf("%s\n", serverResponse);
+            //here is where we need to create a LL of the server's manifest
+        }
         
     }
 
