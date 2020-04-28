@@ -91,9 +91,9 @@ int get_configure(char* IP, int* port)
 node* nullNode(node* tmp)
 {
     tmp->status = malloc(sizeof(char) * 20);
-    tmp->pathName = malloc(sizeof(char) * 20);
-    tmp->versionNum = malloc(sizeof(char) * 20);
-    tmp->hash = malloc(sizeof(char) * 20);
+    tmp->pathName = malloc(sizeof(char) * 1000);
+    tmp->versionNum = malloc(sizeof(char) * 1000);
+    tmp->hash = malloc(sizeof(char) * 1000);
     tmp->next = NULL;
     return tmp;
 }
@@ -131,10 +131,10 @@ char* filePath(char* projectName, char* fileName)
     return result; 
 }
 
-node* manifest_to_LL(int fd)
+node* manifest_to_LL(char* manifestContents)
 {
-    int status;
     int index = 0;
+    int manIndex = 0;
     char temp = '?';
     node* head = NULL;
     char* buffer = malloc(sizeof(char));
@@ -143,87 +143,88 @@ node* manifest_to_LL(int fd)
     node* tmp = malloc(sizeof(node));
     tmp = nullNode(tmp);
 
-    do
+    while(manifestContents[manIndex] != '\0')
     {
-        status = read(fd, &temp, sizeof(char)); 
+        char temp = manifestContents[manIndex];
 
-        if(status > 0)
+        if(temp == '\n')
         {
-            if(temp == '\n')
-            {
-                char* tmpstr = malloc(sizeof(char) * (index+2));
-                bzero(tmpstr, index+2);
-                memcpy(tmpstr, buffer, index+1);
-                free(buffer);
-                tmpstr[index + 1] = '\0'; // turns buffer into string
-                if(head == NULL) // first node of linked list should be manifest version
-                { 
-                    tmp = malloc(sizeof(node));
-                    tmp = nullNode(tmp);
-                    strcpy(tmp->versionNum, tmpstr);
-                    head = tmp;
-
-                    tmp = malloc(sizeof(node));
-                    tmp = nullNode(tmp);
-                }
-                else // add node to end of LL
-                {
-                    strcpy(tmp->hash, tmpstr); // no tab after hash, only newline so we assign it to the node here
-                    ptr = head;
-                    while(ptr->next != NULL){
-                        ptr = ptr->next;
-                    }
-                    ptr->next = tmp;
-                    tmp = malloc(sizeof(node));
-                    tmp = nullNode(tmp);
-                }
-                // reset buffer
-                index = 0;
-                tabcount = 0;
-                buffer = malloc(sizeof(char));
-                continue;
-            }
-
-            else if(temp == '\t') // add to tmpNode / set field of tmpNode
-            {
-                char* tmpstr = malloc(sizeof(char) * (index+2));
-                bzero(tmpstr, index+2);
-                memcpy(tmpstr, buffer, index+1);
-                free(buffer);
-                tmpstr[index + 1] = '\0'; // turns buffer into string
-                    
-                if(tabcount == 0) // status
-                {
-                    strcpy(tmp->status, tmpstr);
-                }  
-                if(tabcount == 1) // pathname
-                {
-                    strcpy(tmp->pathName, tmpstr);
-                }
-                if(tabcount == 2) // versionNum
-                {
-                    strcpy(tmp->versionNum, tmpstr);
-                }
-
-                // reset buffer
-                index = 0;
-                buffer = malloc(sizeof(char));
-                tabcount++;
-                continue;
-            }
-            else // add to buffer if not tab or newline
+            char* tmpstr = malloc(sizeof(char) * (index+2));
+            bzero(tmpstr, index+2);
+            memcpy(tmpstr, buffer, index+1);
+            free(buffer);
+            tmpstr[index + 1] = '\0'; // turns buffer into string
+            if(head == NULL) // first node of linked list should be manifest version
             { 
-                buffer[index] = temp;
-                index++;
-                char* tmpstr = malloc(sizeof(char) * (index + 1));
-                bzero(tmpstr, index + 1);
-                memcpy(tmpstr, buffer, index);
-                free(buffer);
-                buffer = tmpstr;
+                tmp = malloc(sizeof(node));
+                tmp = nullNode(tmp);
+                strcpy(tmp->versionNum, tmpstr);
+                head = tmp;
+
+                tmp = malloc(sizeof(node));
+                tmp = nullNode(tmp);
             }
+            else // add node to end of LL
+            {
+                strcpy(tmp->hash, tmpstr); // no tab after hash, only newline so we assign it to the node here
+                ptr = head;
+                while(ptr->next != NULL){
+                    ptr = ptr->next;
+                }
+                ptr->next = tmp;
+                tmp = malloc(sizeof(node));
+                tmp = nullNode(tmp);
+            }
+            // reset buffer
+            index = 0;
+            tabcount = 0;
+            buffer = malloc(sizeof(char));
+            manIndex++;
+            continue;
         }
 
-    } while(status > 0);
+        else if(temp == '\t') // add to tmpNode / set field of tmpNode
+        {
+            char* tmpstr = malloc(sizeof(char) * (index+2));
+            bzero(tmpstr, index+2);
+            memcpy(tmpstr, buffer, index+1);
+            free(buffer);
+            tmpstr[index + 1] = '\0'; // turns buffer into string
+                    
+            if(tabcount == 0) // status
+            {
+                strcpy(tmp->status, tmpstr);
+            }  
+            if(tabcount == 1) // pathname
+            {
+                strcpy(tmp->pathName, tmpstr);
+            }
+            if(tabcount == 2) // versionNum
+            {
+                strcpy(tmp->versionNum, tmpstr);
+            }
+
+            // reset buffer
+            index = 0;
+            buffer = malloc(sizeof(char));
+            tabcount++;
+            manIndex++;
+            continue;
+        }
+        else // add to buffer if not tab or newline
+        { 
+            buffer[index] = temp;
+            index++;
+            char* tmpstr = malloc(sizeof(char) * (index + 1));
+            bzero(tmpstr, index + 1);
+            memcpy(tmpstr, buffer, index);
+            free(buffer);
+            buffer = tmpstr;
+            manIndex++;
+        }
+        
+
+    }
     return head;
 }
 
@@ -250,6 +251,20 @@ void LL_to_manifest(node* head, int fd)
     }
 }
 
+
+
+void freeList(node* head)
+{
+    node* ptr = head;
+    while( ptr != NULL)
+    {
+        node* temp = ptr;
+        ptr = ptr->next;
+        free(temp); 
+    }
+}
+
+
 int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
 { 
     if(!isDirectoryExists(projectName))
@@ -257,10 +272,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
         return 0; // project does not exist on client side
     }
     else{
-        char* temp_file_name = malloc(sizeof(char) * 50);
-        strcpy(temp_file_name, fileName);
-        char* temp_project_name = malloc(sizeof(char) * 50);
-        strcpy(temp_project_name, projectName);
+        
         int fd = open(manifestPath(projectName), O_RDONLY);
 
         if(fd == -1)
@@ -269,15 +281,18 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
             return 0;
         }  
 
-        node* head = manifest_to_LL(fd);
+        // read contents of manifest into a buffer
+        char* buffer = (char*) malloc(sizeof(char) * 50);
+        buffer = readFile(buffer, fd);
+        node* head = manifest_to_LL(buffer);
         
 
         // go through LL with fileName as key
-        strcpy(fileName, temp_file_name);
+        
         node* ptr = head;
         int modify = 0;
         while(ptr != NULL){
-            if(strcmp(ptr->pathName, filePath(temp_project_name, fileName)) == 0) // match
+            if(strcmp(ptr->pathName, filePath(projectName, fileName)) == 0) // match
             {
                 strcpy(ptr->status, "M"); // modify
                 printf("File already in manifest\n");
@@ -295,7 +310,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
                 ptr = ptr->next;
             }
             
-            int fd2 = open(filePath(temp_project_name, fileName), O_RDONLY);
+            int fd2 = open(filePath(projectName, fileName), O_RDONLY);
             if(fd2 == -1)
             {
                 printf("File does not exist\n");
@@ -326,7 +341,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
             node* resultNode = malloc(sizeof(node));
             resultNode = nullNode(resultNode);
             strcpy(resultNode->status, "A"); // add
-            strcpy(resultNode->pathName, filePath(temp_project_name, fileName));
+            strcpy(resultNode->pathName, filePath(projectName, fileName));
             strcpy(resultNode->versionNum, "0");
             strcpy(resultNode->hash, hashedStr);
 
@@ -339,11 +354,11 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
         close(fd);
         
         // write contents back to .Manifest
-        strcpy(projectName, temp_project_name);
         fd = open(manifestPath(projectName), O_RDWR | O_CREAT | O_TRUNC, 00600);
         LL_to_manifest(head, fd);
         
         //free list
+        freeList(head);
         close(fd);
         if(modify == 1) // did not add
         {
@@ -363,10 +378,7 @@ int Remove(char* projectName, char* fileName)
     }
     else
     {
-        char* temp_file_name = malloc(sizeof(char) * 50);
-        strcpy(temp_file_name, fileName);
-        char* temp_project_name = malloc(sizeof(char) * 50);
-        strcpy(temp_project_name, projectName);
+        
         int fd = open(manifestPath(projectName), O_RDONLY);
 
         if(fd == -1)
@@ -375,14 +387,18 @@ int Remove(char* projectName, char* fileName)
             return 0;
         }
 
-        node* head = manifest_to_LL(fd);
+        // go through contents of manifest and put them into a buffer
+        char* buffer = (char*)malloc(sizeof(char) * 20);
+        buffer = readFile(buffer, fd);
+        node* head = manifest_to_LL(buffer);
+
         int removed = 0;
         // go through LL with fileName as key
-        strcpy(fileName, temp_file_name);
+        
         node* ptr = head;
         while(ptr != NULL)
         {
-            if(strcmp(ptr->pathName, filePath(temp_project_name, fileName)) == 0)
+            if(strcmp(ptr->pathName, filePath(projectName, fileName)) == 0)
             {
                 strcpy(ptr->status, "R");
                 removed = 1;
@@ -394,11 +410,12 @@ int Remove(char* projectName, char* fileName)
         close(fd);
 
         // write contents back to .Manifest
-        strcpy(projectName, temp_project_name);
+    
         fd = open(manifestPath(projectName), O_RDWR | O_CREAT | O_TRUNC, 00600);
         LL_to_manifest(head, fd);
         
         //free list
+        freeList(head);
         close(fd);
         if(removed == 0) // no match found
         { 

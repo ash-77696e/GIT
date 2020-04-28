@@ -40,10 +40,10 @@ int numDigits(int num)
     return count;
 }
 
-node* manifest_to_LL(int fd)
+node* manifest_to_LL(char* manifestContents)
 {
-    int status;
     int index = 0;
+    int manIndex = 0;
     char temp = '?';
     node* head = NULL;
     char* buffer = malloc(sizeof(char));
@@ -52,92 +52,90 @@ node* manifest_to_LL(int fd)
     node* tmp = malloc(sizeof(node));
     tmp = nullNode(tmp);
 
-    do
+    while(manifestContents[manIndex] != '\0')
     {
-        status = read(fd, &temp, sizeof(char)); 
+        char temp = manifestContents[manIndex];
 
-        if(status > 0)
+        if(temp == '\n')
         {
-            if(temp == '\n')
-            {
-                char* tmpstr = malloc(sizeof(char) * (index+2));
-                bzero(tmpstr, index+2);
-                memcpy(tmpstr, buffer, index+1);
-                free(buffer);
-                tmpstr[index + 1] = '\0'; // turns buffer into string
-                if(head == NULL) // first node of linked list should be manifest version
-                { 
-                    tmp = malloc(sizeof(node));
-                    tmp = nullNode(tmp);
-                    strcpy(tmp->versionNum, tmpstr);
-                    head = tmp;
-
-                    tmp = malloc(sizeof(node));
-                    tmp = nullNode(tmp);
-                }
-                else // add node to end of LL
-                {
-                    strcpy(tmp->hash, tmpstr); // no tab after hash, only newline so we assign it to the node here
-                    ptr = head;
-                    while(ptr->next != NULL){
-                        ptr = ptr->next;
-                    }
-                    ptr->next = tmp;
-                    tmp = malloc(sizeof(node));
-                    tmp = nullNode(tmp);
-                }
-                // reset buffer
-                index = 0;
-                tabcount = 0;
-                buffer = malloc(sizeof(char));
-                continue;
-            }
-
-            else if(temp == '\t') // add to tmpNode / set field of tmpNode
-            {
-                char* tmpstr = malloc(sizeof(char) * (index+2));
-                bzero(tmpstr, index+2);
-                memcpy(tmpstr, buffer, index+1);
-                free(buffer);
-                tmpstr[index + 1] = '\0'; // turns buffer into string
-                    
-                if(tabcount == 0) // status
-                {
-                    strcpy(tmp->status, tmpstr);
-                }  
-                if(tabcount == 1) // pathname
-                {
-                    strcpy(tmp->pathName, tmpstr);
-                }
-                if(tabcount == 2) // versionNum
-                {
-                    strcpy(tmp->versionNum, tmpstr);
-                }
-
-                // reset buffer
-                index = 0;
-                buffer = malloc(sizeof(char));
-                tabcount++;
-                continue;
-            }
-            else // add to buffer if not tab or newline
+            char* tmpstr = malloc(sizeof(char) * (index+2));
+            bzero(tmpstr, index+2);
+            memcpy(tmpstr, buffer, index+1);
+            free(buffer);
+            tmpstr[index + 1] = '\0'; // turns buffer into string
+            if(head == NULL) // first node of linked list should be manifest version
             { 
-                buffer[index] = temp;
-                index++;
-                char* tmpstr = malloc(sizeof(char) * (index + 1));
-                bzero(tmpstr, index + 1);
-                memcpy(tmpstr, buffer, index);
-                free(buffer);
-                buffer = tmpstr;
+                tmp = malloc(sizeof(node));
+                tmp = nullNode(tmp);
+                strcpy(tmp->versionNum, tmpstr);
+                head = tmp;
+
+                tmp = malloc(sizeof(node));
+                tmp = nullNode(tmp);
             }
+            else // add node to end of LL
+            {
+                strcpy(tmp->hash, tmpstr); // no tab after hash, only newline so we assign it to the node here
+                ptr = head;
+                while(ptr->next != NULL){
+                    ptr = ptr->next;
+                }
+                ptr->next = tmp;
+                tmp = malloc(sizeof(node));
+                tmp = nullNode(tmp);
+            }
+            // reset buffer
+            index = 0;
+            tabcount = 0;
+            buffer = malloc(sizeof(char));
+            manIndex++;
+            continue;
         }
 
-    } while(status > 0);
+        else if(temp == '\t') // add to tmpNode / set field of tmpNode
+        {
+            char* tmpstr = malloc(sizeof(char) * (index+2));
+            bzero(tmpstr, index+2);
+            memcpy(tmpstr, buffer, index+1);
+            free(buffer);
+            tmpstr[index + 1] = '\0'; // turns buffer into string
+                    
+            if(tabcount == 0) // status
+            {
+                strcpy(tmp->status, tmpstr);
+            }  
+            if(tabcount == 1) // pathname
+            {
+                strcpy(tmp->pathName, tmpstr);
+            }
+            if(tabcount == 2) // versionNum
+            {
+                strcpy(tmp->versionNum, tmpstr);
+            }
 
+            // reset buffer
+            index = 0;
+            buffer = malloc(sizeof(char));
+            tabcount++;
+            manIndex++;
+            continue;
+        }
+        else // add to buffer if not tab or newline
+        { 
+            buffer[index] = temp;
+            index++;
+            char* tmpstr = malloc(sizeof(char) * (index + 1));
+            bzero(tmpstr, index + 1);
+            memcpy(tmpstr, buffer, index);
+            free(buffer);
+            buffer = tmpstr;
+            manIndex++;
+        }
+        
+
+    }
     return head;
 }
-
-
 
 char* readMessage(char* buffer, int fd)
 {
