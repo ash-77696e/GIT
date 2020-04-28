@@ -11,23 +11,8 @@
 #include <string.h>
 #include <openssl/md5.h>
 #include <errno.h>
-
-typedef struct node
-{
-    char* status;
-    char* pathName;
-    char* versionNum;
-    unsigned char* hash;
-    struct node* next;
-} node;
-
-typedef struct FileNode
-{
-    char* pathName;
-    char* contents;
-    int size;
-    struct FileNode* next;
-} FileNode;
+#include "../structs.h"
+#include "../IO.h"
 
 void error(char *msg)
 {
@@ -35,33 +20,6 @@ void error(char *msg)
     exit(0);
 }
 
-char* readFile(char* buffer, int fd)
-{
-    int bufferSize = 256;
-    buffer = (char*) malloc(sizeof(char) * bufferSize);
-    bzero(buffer, bufferSize);
-
-    int status = 1;
-    int readIn = 0;
-
-    do
-    {
-        status = read(fd, buffer+readIn, 1);
-        readIn += status;
-        
-        if(readIn >= bufferSize)
-        {
-            char* tmp = (char*) malloc(sizeof(char) * bufferSize*2);
-            bzero(tmp, bufferSize*2);
-            memcpy(tmp, buffer, bufferSize);
-            free(buffer);
-            buffer = tmp;
-            bufferSize *= 2;
-        }
-    } while (status > 0);
-    
-    return buffer;
-}
 
 int create_socket()
 {
@@ -128,17 +86,6 @@ int get_configure(char* IP, int* port)
     token = strtok(NULL, " ");
     *port = atoi(token);
     close(fd);
-}
-
-int isDirectoryExists(const char* path) 
-{
-    struct stat stats;
-    stat(path, &stats);
-
-    if(S_ISDIR(stats.st_mode))
-        return 1;
-    
-    return 0;
 }
 
 node* nullNode(node* tmp)
@@ -532,14 +479,6 @@ void makePath(char* filePath)
     bzero(command, strlen(dirPath) + 10);
     sprintf(command, "mkdir -p %s", dirPath);
     system(command);
-}
-
-int getFileSize(char* path)
-{
-    int fd = open(path, O_RDONLY);
-    int size = lseek(fd, 0, SEEK_END);
-    close(fd);
-    return size;
 }
 
 void createFileLL(char* basePath, FileNode** fileRoot)
