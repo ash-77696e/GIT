@@ -284,8 +284,9 @@ int currentversion(char* token, int clientfd)
     sprintf(manifestPath, "%s/.Manifest", token);
     
     int manifestFD = open(manifestPath, O_RDONLY);
-
-    node* head = manifest_to_LL(manifestFD);
+    char* manifestContents = (char*)malloc(sizeof(char) * 20);
+    manifestContents = readFile(manifestContents, manifestFD);
+    node* head = manifest_to_LL(manifestContents);
     node* ptr = head;
 
     int len = 2;
