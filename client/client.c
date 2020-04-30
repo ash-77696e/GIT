@@ -20,6 +20,25 @@ void error(char *msg)
     exit(0);
 }
 
+char* getHash(char* fileContents)
+{
+    unsigned char* result = malloc(sizeof(char) * strlen(fileContents));
+    char* hashedStr = (char*) malloc(sizeof(char) * 33);
+    bzero(hashedStr, 33);
+
+    MD5_CTX context;
+    MD5_Init(&context);
+    MD5_Update(&context, fileContents, strlen(fileContents));
+    MD5_Final(result, &context);
+    int i;
+    unsigned char resultstr[32];
+    for (i=0; i<16; i++) {
+        sprintf(resultstr, "%02x", result[i]);
+        strcat(hashedStr, resultstr);
+    }
+
+    return hashedStr;
+}
 
 int create_socket()
 {
@@ -446,8 +465,6 @@ int sendMessage(char* cmd, int sockFD)
     bzero(msg, size + numDigits(size) + 2);
     sprintf(msg, "%d:", size);
     strcat(msg, cmd);
-    printf("%s\n", msg);
-    printf("%d\n", strlen(msg));
     write(sockFD, msg, strlen(msg));
 }
 
@@ -629,6 +646,61 @@ void createSentFiles(char* buffer)
     }
 }
 
+
+//0: added entry (keep hash), 1: modified entry (new hash), 2: delete entry, 4: no change, 4: entry not in server but deleted from client (no change)
+//3: client modified but not in server, so it is techinically an Add but with a live hash (new hash)
+int compareClientAndServerManifests(node* serverManifest, node* clientEntry)
+{
+    node* ptr = serverManifest;
+
+    while(ptr != NULL)
+    {
+        if(strcmp(ptr->pathName, clientEntry->pathName) == 0)
+        {
+            if(strcmp(clientEntry->status, "R") == 0)
+            {
+                printf("D ");
+                printf(clientEntry->pathName);
+                printf("\n");
+                return 2;
+            }
+            
+            if(strcmp(ptr->hash, clientEntry->hash) == 0)
+            {
+                int fd = open(clientEntry->pathName, O_RDONLY);
+                char* fileContents = readFile(fileContents, fd);
+                char* liveHash = getHash(fileContents);
+
+                if(strcmp(clientEntry->hash, liveHash) != 0)
+                {
+                    printf("M ");
+                    printf(clientEntry->pathName);
+                    printf("\n");
+                    return 1;
+                }
+                else
+                    return 4;
+            }
+
+
+        }
+
+        ptr = ptr->next;
+    }
+
+    if(strcmp(clientEntry->status, "R") == 0)
+        return 4;
+    
+    printf("A ");
+    printf(clientEntry->pathName);
+    printf("\n");
+
+    if(strcmp(clientEntry->status, "M") == 0)
+        return 3;
+
+    return 0;
+}
+
 int main(int argc, char* argv[])
 {
     if(argc > 1) 
@@ -783,8 +855,114 @@ int main(int argc, char* argv[])
             sprintf(cmCommand, "cm:%s", argv[2]);
             sendMessage(cmCommand, sockFD);
             char* serverResponse = readMessage(serverResponse, sockFD);
-            printf("%s\n", serverResponse);
-            //here is where we need to create a LL of the server's manifest
+            serverResponse = &serverResponse[3];
+
+            char* idStr = (char*) malloc(sizeof(char));
+            idStr[0] = '\0'; 
+            int index = 0;
+
+            while(serverResponse[index] != ':')
+            {
+                idStr[index] = serverResponse[index];
+                char* tmp = (char*) malloc(sizeof(char) * (index+1+1));
+                memset(tmp, '\0', index+1+1);
+                memcpy(tmp, idStr, index+1);
+                free(idStr);
+                idStr = tmp;
+                index++;
+            }
+
+            node* serverManifest = manifest_to_LL(serverResponse);
+            char* clientManifestPath = (char*) malloc(sizeof(char) * strlen(argv[2]) + 20);
+            bzero(clientManifestPath, strlen(argv[2]) + 20);
+            sprintf(clientManifestPath, "%s/.Manifest", argv[2]);
+            int clientManifestFD = open(clientManifestPath, O_RDONLY);
+            char* clientManifestContents = readFile(clientManifestContents, clientManifestFD);
+            node* clientManifest = manifest_to_LL(clientManifestContents);
+            close(clientManifestFD);
+            free(clientManifestContents);
+            //here is where we compare the 2 manifests
+
+            char* clientCommitPath = (char*) malloc(sizeof(char) * strlen(argv[2]) + 20);
+            bzero(clientCommitPath, strlen(argv[2]) + 20);
+            sprintf(clientCommitPath, "%s/.Commit", argv[2]);
+
+            int clientCommitFD = open(clientCommitPath, O_RDWR | O_CREAT | O_TRUNC, 00600);
+
+            int clientVersion = atoi(clientManifest->versionNum);
+            int serverVersion = atoi(serverManifest->versionNum);
+
+            write(clientCommitFD, idStr, strlen(idStr));
+            write(clientCommitFD, "\n", 1);
+
+            node* ptr = clientManifest->next;
+
+            while(ptr != NULL)
+            {
+                int response = compareClientAndServerManifests(serverManifest->next, ptr);
+                if(response == 0)
+                {
+                    write(clientCommitFD, "A", 1);
+                    write(clientCommitFD, "\t", 1);
+                    write(clientCommitFD, ptr->pathName, strlen(ptr->pathName));
+                    write(clientCommitFD, "\t", 1);
+                    write(clientCommitFD, ptr->versionNum, strlen(ptr->versionNum));
+                    write(clientCommitFD, "\t", 1);
+                    write(clientCommitFD, ptr->hash, strlen(ptr->hash));
+                    write(clientCommitFD, "\n", 1);
+                }
+                if(response == 1)
+                {
+                    write(clientCommitFD, "M", 1);
+                    write(clientCommitFD, "\t", 1);
+                    write(clientCommitFD, ptr->pathName, strlen(ptr->pathName));
+                    write(clientCommitFD, "\t", 1);
+                    int versionNum = atoi(ptr->versionNum) + 1;
+                    char* newVersionNum = (char*) malloc(sizeof(char) * (numDigits(versionNum) + 1));
+                    bzero(newVersionNum, numDigits(versionNum)+1);
+                    sprintf(newVersionNum, "%d", versionNum);
+                    write(clientCommitFD, newVersionNum, strlen(newVersionNum));
+                    write(clientCommitFD, "\t", 1);
+                    int fd = open(ptr->pathName, O_RDONLY);
+                    char* fileContents = readFile(fileContents, fd);
+                    close(fd);
+                    char* hash = getHash(fileContents);
+                    write(clientCommitFD, hash, strlen(hash));
+                    write(clientCommitFD, "\n", 1);
+                }
+                if(response == 2)
+                {
+                    write(clientCommitFD, "D", 1);
+                    write(clientCommitFD, "\t", 1);
+                    write(clientCommitFD, ptr->pathName, strlen(ptr->pathName));
+                    write(clientCommitFD, "\t", 1);
+                    write(clientCommitFD, ptr->versionNum, strlen(ptr->versionNum));
+                    write(clientCommitFD, "\t", 1);
+                    write(clientCommitFD, ptr->hash, strlen(ptr->hash));
+                    write(clientCommitFD, "\n", 1);                    
+                }
+                if(response == 3)
+                {
+                    write(clientCommitFD, "A", 1);
+                    write(clientCommitFD, "\t", 1);
+                    write(clientCommitFD, ptr->pathName, strlen(ptr->pathName));
+                    write(clientCommitFD, "\t", 1);
+                    write(clientCommitFD, ptr->versionNum, strlen(ptr->versionNum));
+                    write(clientCommitFD, "\t", 1);
+                    int fd = open(ptr->pathName, O_RDONLY);
+                    char* fileContents = readFile(fileContents, fd);
+                    close(fd);
+                    char* hash = getHash(fileContents);
+                    write(clientCommitFD, hash, strlen(hash));
+                    write(clientCommitFD, "\n", 1);                    
+                }
+                ptr = ptr->next;
+            }
+            close(clientCommitFD);
+            clientCommitFD = open(clientCommitPath, O_RDONLY);
+            char* clientCommitContents = readFile(clientCommitContents, clientCommitFD);
+            close(clientCommitFD);
+            sendMessage(clientCommitContents, sockFD);
         }
         
     }

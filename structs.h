@@ -18,4 +18,12 @@ typedef struct FileNode
     struct FileNode* next;
 } FileNode;
 
+typedef struct CommitNode
+{
+    char* projName;
+    int clientID;
+    char* commit;
+    struct CommitNode* next;
+} CommitNode;
+
 #endif

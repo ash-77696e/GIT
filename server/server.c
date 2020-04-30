@@ -12,6 +12,9 @@
 #include "../structs.h"
 #include "../IO.h"
 
+int clientIds;
+CommitNode* commitNodes;
+
 void error(char *msg)
 {
     perror(msg);
@@ -230,6 +233,27 @@ void createFileLL(char* basePath, FileNode** fileRoot)
     closedir(dir);
 }
 
+CommitNode* addCommitNode(CommitNode* head, char* projName, int clientID, char* commit)
+{
+    if(head == NULL)
+    {
+        head = (CommitNode*) malloc(sizeof(CommitNode));
+        head->commit = commit;
+        head->clientID = clientID;
+        head->projName = projName;
+        head->next = NULL;
+        return head;
+    }
+
+    CommitNode* node = (CommitNode*) malloc(sizeof(CommitNode));
+    node->projName = projName;
+    node->commit = commit;
+    node->clientID = clientID;
+    node->next = head;
+    head = node;
+    return head;
+}
+
 int create(char* token, int clientfd)
 {
     token = &token[3];
@@ -397,10 +421,14 @@ int commit(char* token, int clientfd)
     int manifestFD = open(manifestPath, O_RDONLY);
     char* manifestContents = readFile(manifestContents, manifestFD);
     close(manifestFD);
-    char* message = (char*) malloc(sizeof(char) * (strlen(manifestContents) + 10));
-    bzero(message, strlen(manifestContents) + 10);
-    sprintf(message, "sc:%s", manifestContents);
+    char* message = (char*) malloc(sizeof(char) * (strlen(manifestContents) + 30));
+    bzero(message, strlen(manifestContents) + 30);
+    int id = clientIds++;
+    sprintf(message, "sc:%d:%s", id, manifestContents);
     sendMessage(message, clientfd);
+    char* clientResponse = readMessage(clientResponse, clientfd);
+    commitNodes = addCommitNode(commitNodes, token, id, clientResponse);
+    printf("%s\n", commitNodes->commit);
 }
 
 int socketStuff(int fd)
@@ -430,6 +458,10 @@ int main(int argc, char *argv[])
     int sockfd, newsockfd, portno, clilen;
     struct sockaddr_in serv_addr, cli_addr;
     int n;
+
+    clientIds = 0;
+    commitNodes = NULL;
+
     if(argc < 2) 
     {
         fprintf(stderr,"ERROR, no port provided\n");
