@@ -481,6 +481,7 @@ char* readMessage(char* buffer, int fd)
     char* msg = (char*) malloc(sizeof(char) * size+1);
     bzero(msg, size+1);
     read(fd, msg, size);
+    printf("Message read is: %s\n", msg);
     return msg;
 }
 
@@ -706,6 +707,14 @@ void free_fileLL(FileNode* fileHead)
         fptr = fptr->next;
         free(temp_fptr);
     }
+}
+
+void removeCommit(char* commitPath)
+{
+    char* remove_commit = (char*)malloc(sizeof(char) * (strlen(commitPath) + 7));
+    bzero(remove_commit, strlen(commitPath) + 7);
+    sprintf(remove_commit, "rm -r %s", commitPath);
+    system(remove_commit);
 }
 
 int main(int argc, char* argv[])
@@ -1019,7 +1028,7 @@ int main(int argc, char* argv[])
             // open socket
             int serverFD = create_socket();
             sendMessage(message, serverFD);
-
+            
             
             char* serverResponse = readMessage(serverResponse, serverFD);
             printf("Server response is: %s\n", serverResponse);
@@ -1027,11 +1036,13 @@ int main(int argc, char* argv[])
             if(strcmp(serverResponse, "er:project does not exist on the server") == 0) // project was not on server
             {
                 printf("Error: Project did not exist on server\n");
+                removeCommit(commitPath);
                 return 0;    
             }
             if(strcmp(serverResponse, "er:no match for .Commit was found") == 0) // project was not on server
             {
                 printf("Error: No match for client's .Commit was found on the server\n");
+                removeCommit(commitPath);
                 return 0;    
             }
             if(strcmp(serverResponse, "su:match for .Commit was found") == 0)
@@ -1043,7 +1054,8 @@ int main(int argc, char* argv[])
             node* commitHead = NULL;
             commitHead = manifest_to_LL(commitContents); // change name from manifest_to_LL to file_to_LL later
             
-            
+            free(message);
+            free(commitContents);
             close(commitFD);
 
             //make FileNode LL from commit LL
@@ -1065,6 +1077,7 @@ int main(int argc, char* argv[])
                     if(fd == -1)
                     {
                         printf("File in .Commit does not exist\n");
+                        removeCommit(commitPath);
                         return 0;
                     }
                     char* fileContents = (char*)malloc(sizeof(char) * 10);
@@ -1138,8 +1151,9 @@ int main(int argc, char* argv[])
             printf("Message to be sent to server is: %s\n", fileMessage);
 
             free_fileLL(fileHead);
-            //freeList(commitHead);
             sendMessage(fileMessage, serverFD);
+            freeList(commitHead);
+            free(fileMessage);
             
             char* finalResponse = readMessage(finalResponse, serverFD);
             printf("The finalResponse is: %s\n", finalResponse);
@@ -1159,6 +1173,7 @@ int main(int argc, char* argv[])
             if(strcmp(push_result, "er") == 0)
             {
                 printf("Push failed\n");
+                removeCommit(commitPath);
             }
             else if(strcmp(push_result, "su") == 0) // get new manifest contents from message and overwrite manifest
             {
@@ -1196,6 +1211,7 @@ int main(int argc, char* argv[])
 
                 // delete copy of .Commit
 
+                removeCommit(commitPath);
                 
                 printf("Successful push\n");
             }

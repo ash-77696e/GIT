@@ -266,6 +266,7 @@ int sendMessage(char* cmd, int sockFD)
     bzero(msg, size + numDigits(size) + 2);
     sprintf(msg, "%d:", size);
     strcat(msg, cmd);
+    printf("Message being sent is: %s\n", msg);
     write(sockFD, msg, strlen(msg));
 }
 
@@ -1019,7 +1020,7 @@ int push(char* token, int clientfd)
     freeList(manifestHead);
     freeList(commitHead);
     free_fileLL(fileHead);
-    free(clientCommit);
+    //free(clientCommit);
     
     manifestFD = open(manifestPath, O_RDONLY);
     if(manifestFD == -1 )
@@ -1038,8 +1039,8 @@ int push(char* token, int clientfd)
     strcat(finalMessage, ":");
     strcat(finalMessage, manifestContents);
     printf("The finalMessage is: %s\n", finalMessage);
-    
     sendMessage(finalMessage, clientfd);
+    //free(finalMessage);
     return 0;
     
 }
