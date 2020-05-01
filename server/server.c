@@ -231,8 +231,9 @@ char* readMessage(char* buffer, int fd)
     char* msg = (char*) malloc(sizeof(char) * size+1);
     bzero(msg, size+1);
     read(fd, msg, size);
-    printf("message size is %d\n", size); // delete later
-    printf("message is %s\n", msg); // delete later
+    //msg[size] = '\0';
+    //printf("message size is %d\n", size); // delete later
+    //printf("message is %s\n", msg); // delete later
     return msg;
 }
 
@@ -677,13 +678,14 @@ int push(char* token, int clientfd)
     }
     
     char* received_files = readMessage(received_files, clientfd); // reading file contents sent from client 
-    printf("received_files is: %s\n", received_files);
+    //printf("received_files is: %s\n", received_files);
     token = (char*)malloc(sizeof(char) * (strlen(received_files) + 1));
     bzero(token, strlen(received_files) + 1);
     strcpy(token, received_files);
+    free(received_files);
     printf("Message from client is %s\n", token);
 
-    /*
+    
     index = 0;
 
     // get numFiles
@@ -696,6 +698,8 @@ int push(char* token, int clientfd)
     }
     num_of_files[index] = '\0';
     int numFiles = atoi(num_of_files);
+    printf("Number of files client sent is: %d\n", numFiles);
+    
     i = 0;
     int strIndex;
     index++; // skip : after numFiles
@@ -706,8 +710,8 @@ int push(char* token, int clientfd)
     while( i < numFiles) // go through rest of message (change malloc amounts later)
     {
         strIndex = 0;
-        char* file_name_length = (char*)malloc(sizeof(char) * 1000);
-        bzero(num_of_files, 1000);
+        char* file_name_length = (char*)malloc(sizeof(char) * 100);
+        bzero(num_of_files, 100);
         while(token[index] != ':')
         {
             file_name_length[strIndex] = token[index];
@@ -728,6 +732,7 @@ int push(char* token, int clientfd)
         }
         file_name[strIndex] = '\0';
         index++; // skip : after file_name
+        //printf("File name is: %s\n", file_name);
         strIndex = 0;
         char* file_length = (char*)malloc(sizeof(char) * 1000);
         bzero(file_name, 1000);
@@ -750,7 +755,8 @@ int push(char* token, int clientfd)
             strIndex++;
         }
         file_contents[strIndex] = '\0';
-        index++; // skip : after file_ contents
+        //printf("File contents are: %s\n", file_contents);
+        index++; // skip : after file_contents
 
         FileNode* tempfnode = (FileNode*)malloc(sizeof(FileNode));
 
@@ -777,10 +783,10 @@ int push(char* token, int clientfd)
             tmp_ptr->next = tempfnode;
             tempfnode->next = NULL;   
         }
-        i++;
+        i++; 
 
     }
-
+    
     //make manifest LL
     char* manifestPath = malloc(sizeof(char) * ( strlen(projectName) + 11));
     bzero(manifestPath, strlen(projectName) + 11);
@@ -799,6 +805,8 @@ int push(char* token, int clientfd)
     node* manifestHead = manifest_to_LL(manifestContents);
     close(manifestFD);
 
+    printf("Manifest contents are: %s\n", manifestContents);
+    
     // make .Commit to LL
     node* commitHead = manifest_to_LL(clientCommit); // commitHead versionNum = clientid
 
@@ -815,18 +823,23 @@ int push(char* token, int clientfd)
     char* old_manifest_version = (char*)malloc(sizeof(char) * (strlen(manifestHead->versionNum) + 1));
     bzero(old_manifest_version, strlen(manifestHead->versionNum) + 1);
     strcpy(old_manifest_version, manifestHead->versionNum);
+    printf("Old manifest version is: %s\n", old_manifest_version);
     char* backupPath = (char*)malloc(sizeof(char) * ( strlen(projectName) + 9 ) );
     bzero(backupPath, strlen(projectName) + 9);
     strcpy(backupPath, projectName);
     strcat(backupPath, "/");
     strcat(backupPath, "backups");
+    printf("Backup path is: %s\n" , backupPath);
+    
     if(!isDirectoryExists(backupPath))
     {
+        printf("Creating backups directory\n");
         char* command = (char*)malloc(sizeof(char) * (strlen(backupPath) + 7 ));
         bzero(command, strlen(backupPath) + 7);
         sprintf(command, "mkdir %s", backupPath);
-        system(command);
+        system(command);   
     }
+    /*
     char* tar_path_1 = (char*)malloc(sizeof(char) * (strlen(projectName) + 10 + strlen(manifestHead->versionNum)));
     bzero(tar_path_1, strlen(projectName) + 10 + strlen(manifestHead->versionNum));
     strcpy(tar_path_1, projectName);

@@ -697,6 +697,17 @@ char* int_to_string(int x)
     return str;
 }
 
+void free_fileLL(FileNode* fileHead)
+{
+    FileNode* fptr = fileHead;
+    while(fptr != NULL)
+    {
+        FileNode* temp_fptr = fptr;
+        fptr = fptr->next;
+        free(temp_fptr);
+    }
+}
+
 int main(int argc, char* argv[])
 {
     if(argc > 1) 
@@ -1096,8 +1107,8 @@ int main(int argc, char* argv[])
             
             int numFiles = 0;
             FileNode* fptr = fileHead;
-            char* fileMessage = (char*)malloc(sizeof(char) * 10000); // fix later to malloc #bytes based on file size
-            bzero(fileMessage, 10000);
+            char* fileMessage = (char*)malloc(sizeof(char) * 1000); // fix later to malloc #bytes based on file size
+            bzero(fileMessage, 1000);
 
             fptr = fileHead;
             while(fptr != NULL)
@@ -1125,6 +1136,8 @@ int main(int argc, char* argv[])
             strcat(num_of_files, ":");
             fileMessage = strcat(num_of_files, fileMessage);
             printf("Message to be sent to server is: %s\n", fileMessage);
+
+            free_fileLL(fileHead);
             sendMessage(fileMessage, serverFD);
             /*
             char* finalResponse = readMessage(finalResponse, serverFD);
@@ -1177,6 +1190,10 @@ int main(int argc, char* argv[])
                     return 0;
                 }
                 write(manifestFD, manifest_contents, strlen(manifest_contents));
+
+                // delete copy of .Commit
+
+                
                 printf("Successful push\n");
             }
             */
