@@ -963,9 +963,10 @@ int main(int argc, char* argv[])
         if(strcmp(argv[1], "push") == 0 )
         {
             char* projectName = argv[2];
-            char* commitPath = (char*)malloc(sizeof(char) * 1000);
+            char* commitPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 9));
+            bzero(commitPath, strlen(projectName) + 9);
             strcpy(commitPath, projectName);
-            strcat(commitPath, ".Commit");
+            strcat(commitPath, "/.Commit");
             int commitFD = open(commitPath, O_RDONLY);
             int total_message_length;
 
@@ -1001,10 +1002,14 @@ int main(int argc, char* argv[])
             strcat(message, ":");
             strcat(message, commitContents);
 
+            printf("Sending server:\n%s", message);
+            
+            
             // open socket
             int serverFD = create_socket();
             sendMessage(message, serverFD);
-             
+
+            /* 
             char* serverResponse = readMessage(serverResponse, serverFD);
             if(strcmp(serverResponse, "er:project does not exist on the server") == 0) // project was not on server
             {
@@ -1163,7 +1168,7 @@ int main(int argc, char* argv[])
                 write(manifestFD, manifest_contents, strlen(manifest_contents));
                 printf("Successful push\n");
             }
-
+            */
         }
         
     }

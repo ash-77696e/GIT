@@ -585,6 +585,8 @@ int commit(char* token, int clientfd)
 
 int push(char* token, int clientfd)
 {
+    printf("Client sent: %s", token);
+    /*
     token = &token[3];
     int index = 0;
     char* project_name_length = (char*)malloc(sizeof(char) * 1000);
@@ -935,7 +937,7 @@ int push(char* token, int clientfd)
     } 
     manifestContents = readFile(manifestContents, manifestFD); // new contents
     char* manifest_len = int_to_string(strlen(manifestContents));
-    char* finalMessage = (char*)mallloc(sizeof(char) * ( strlen(manifest_len) + strlen(manifestContents) + 5));
+    char* finalMessage = (char*)malloc(sizeof(char) * ( strlen(manifest_len) + strlen(manifestContents) + 5));
     bzero(finalMessage, strlen(manifest_len) + strlen(manifestContents) + 5);
     strcpy(finalMessage, manifest_len);
     strcat(finalMessage, ":");
@@ -943,7 +945,7 @@ int push(char* token, int clientfd)
     sprintf(finalMessage, "su:%s", finalMessage);
     sendMessage(finalMessage, clientfd);
     return 0;
-
+    */
 }
 
 int socketStuff(int fd)
