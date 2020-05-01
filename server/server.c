@@ -231,6 +231,8 @@ char* readMessage(char* buffer, int fd)
     char* msg = (char*) malloc(sizeof(char) * size+1);
     bzero(msg, size+1);
     read(fd, msg, size);
+    printf("message size is %d\n", size); // delete later
+    printf("message is %s\n", msg); // delete later
     return msg;
 }
 
@@ -585,8 +587,7 @@ int commit(char* token, int clientfd)
 
 int push(char* token, int clientfd)
 {
-    printf("Client sent: %s", token);
-    /*
+    printf("Client sent: %s\n", &token[3]);
     token = &token[3];
     int index = 0;
     char* project_name_length = (char*)malloc(sizeof(char) * 1000);
@@ -609,7 +610,8 @@ int push(char* token, int clientfd)
         index++;
     }
     projectName[i] = '\0';
-
+    printf("project name is %s\n", projectName);
+    
     //check if project exists on server
 
     if(!isDirectoryExists(projectName))
@@ -643,6 +645,8 @@ int push(char* token, int clientfd)
         index++;
     }
 
+    printf("Client sent the commit: %s\n", clientCommit);
+    
     // check hash of client commit
     char* client_commit_hash = getHash(clientCommit);
 
@@ -654,6 +658,7 @@ int push(char* token, int clientfd)
         char* server_commit_hash = getHash(commitPtr->commit); 
         if(strcmp(client_commit_hash, server_commit_hash) == 0)
         {
+            printf("Matching .Commit found\n");
             break; // match found
         }
         commitPtr = commitPtr->next;
@@ -670,8 +675,15 @@ int push(char* token, int clientfd)
         printf("Sending client: su:match for .Commit was found\n");
         sendMessage("su:match for .Commit was found", clientfd);   // success
     }
+    
+    char* received_files = readMessage(received_files, clientfd); // reading file contents sent from client 
+    printf("received_files is: %s\n", received_files);
+    token = (char*)malloc(sizeof(char) * (strlen(received_files) + 1));
+    bzero(token, strlen(received_files) + 1);
+    strcpy(token, received_files);
+    printf("Message from client is %s\n", token);
 
-    token = readMessage(token, clientfd); // reading file contents sent from client 
+    /*
     index = 0;
 
     // get numFiles

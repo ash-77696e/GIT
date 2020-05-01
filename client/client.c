@@ -1009,8 +1009,10 @@ int main(int argc, char* argv[])
             int serverFD = create_socket();
             sendMessage(message, serverFD);
 
-            /* 
+            
             char* serverResponse = readMessage(serverResponse, serverFD);
+            printf("Server response is: %s\n", serverResponse);
+            
             if(strcmp(serverResponse, "er:project does not exist on the server") == 0) // project was not on server
             {
                 printf("Error: Project did not exist on server\n");
@@ -1026,9 +1028,11 @@ int main(int argc, char* argv[])
                 printf("Success: Match for client's .Commit found on server\n");
             }
 
-
+            
             node* commitHead = NULL;
             commitHead = manifest_to_LL(commitContents); // change name from manifest_to_LL to file_to_LL later
+            
+            
             close(commitFD);
 
             //make FileNode LL from commit LL
@@ -1045,7 +1049,7 @@ int main(int argc, char* argv[])
 
                 else
                 {
-
+                    //printf("file to open is: %s\n", ptr->pathName);
                     fd = open(ptr->pathName, O_RDONLY);
                     if(fd == -1)
                     {
@@ -1054,10 +1058,15 @@ int main(int argc, char* argv[])
                     }
                     char* fileContents = (char*)malloc(sizeof(char) * 10);
                     fileContents = readFile(fileContents, fd);
+                    printf("Contents of %s is %s\n", ptr->pathName, fileContents);
                     close(fd);
 
                     FileNode* tempfnode = malloc(sizeof(FileNode));
+                    tempfnode->contents = (char*)malloc(sizeof(char) * (strlen(fileContents) + 1));
+                    bzero(tempfnode->contents, strlen(fileContents) + 1);
                     strcpy(tempfnode->contents, fileContents);
+                    tempfnode->pathName = (char*)malloc(sizeof(char) * (strlen(ptr->pathName)+1));
+                    bzero(tempfnode->pathName, strlen(ptr->pathName)+1);
                     strcpy(tempfnode->pathName, ptr->pathName);
                     tempfnode->size = strlen(fileContents);
                     tempfnode->next = NULL;
@@ -1080,6 +1089,7 @@ int main(int argc, char* argv[])
 
                 ptr = ptr->next;
             }
+            
             
             // Make file content message to send to the server
 
@@ -1114,8 +1124,9 @@ int main(int argc, char* argv[])
             char* num_of_files = int_to_string(numFiles);
             strcat(num_of_files, ":");
             fileMessage = strcat(num_of_files, fileMessage);
-            
+            printf("Message to be sent to server is: %s\n", fileMessage);
             sendMessage(fileMessage, serverFD);
+            /*
             char* finalResponse = readMessage(finalResponse, serverFD);
             printf("%s\n", finalResponse);
 
