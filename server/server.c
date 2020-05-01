@@ -205,6 +205,28 @@ void LL_to_manifest(node* head, int fd)
     }
 }
 
+void freeList(node* head)
+{
+    node* ptr = head;
+    while( ptr != NULL)
+    {
+        node* temp = ptr;
+        ptr = ptr->next;
+        free(temp); 
+    }
+}
+
+void free_fileLL(FileNode* fileHead)
+{
+    FileNode* fptr = fileHead;
+    while(fptr != NULL)
+    {
+        FileNode* temp_fptr = fptr;
+        fptr = fptr->next;
+        free(temp_fptr);
+    }
+}
+
 
 char* readMessage(char* buffer, int fd)
 {
@@ -245,6 +267,26 @@ int sendMessage(char* cmd, int sockFD)
     sprintf(msg, "%d:", size);
     strcat(msg, cmd);
     write(sockFD, msg, strlen(msg));
+}
+
+void makePath(char* filePath)
+{
+    char* endIndex = strrchr(filePath, '/');
+    char* dirPath = (char*) malloc(sizeof(char) * strlen(filePath));
+    bzero(dirPath, strlen(filePath));
+    while(filePath != endIndex)
+    {
+        char* c = (char*) malloc(sizeof(char) * 2);
+        c[0] = *filePath;
+        c[1] = '\0';
+        strcat(dirPath, c);
+        filePath++;
+    }
+    char* command = (char*) malloc(sizeof(char) * (strlen(dirPath) + 10));
+    bzero(command, strlen(dirPath) + 10);
+    sprintf(command, "mkdir -p %s", dirPath);
+    printf("makePath command is: %s\n", command);
+    system(command);
 }
 
 void createFileLL(char* basePath, FileNode** fileRoot)
@@ -397,7 +439,7 @@ node* remove_from_manLL(node* manifestHead, char* pathName)
 
 }
 
-void update_manifest_node(node* manifestHead, node* cmt_ptr, char* to_write)
+node* update_manifest_node(node* manifestHead, node* cmt_ptr, char* to_write)
 {
     node* manifest_node = search_in_manLL(manifestHead, cmt_ptr->pathName);
     sprintf(manifest_node->status, "%s", "-"); // reset status
@@ -407,6 +449,7 @@ void update_manifest_node(node* manifestHead, node* cmt_ptr, char* to_write)
     strcpy(manifest_node->versionNum, file_version_string); // increment versionNum
     char* file_hash = getHash(to_write);
     strcpy(manifest_node->hash, file_hash); // update hash to what client sent
+    return manifestHead;
 }
 
 int create(char* token, int clientfd)
@@ -689,8 +732,8 @@ int push(char* token, int clientfd)
     index = 0;
 
     // get numFiles
-    char* num_of_files = (char*)malloc(sizeof(char)*1000);
-    bzero(num_of_files, 1000);
+    char* num_of_files = (char*)malloc(sizeof(char)*100);
+    bzero(num_of_files, 100);
     while(token[index] != ':')
     {
         num_of_files[index] = token[index];
@@ -735,7 +778,7 @@ int push(char* token, int clientfd)
         //printf("File name is: %s\n", file_name);
         strIndex = 0;
         char* file_length = (char*)malloc(sizeof(char) * 1000);
-        bzero(file_name, 1000);
+        bzero(file_length, 1000);
         while(token[index] != ':')
         {
             file_length[strIndex] = token[index];
@@ -760,8 +803,8 @@ int push(char* token, int clientfd)
 
         FileNode* tempfnode = (FileNode*)malloc(sizeof(FileNode));
 
-        tempfnode->pathName = (char*)malloc(sizeof(char) * (strlen(file_name) + 1));
-        bzero(tempfnode->pathName, (strlen(file_name) + 1));
+        tempfnode->pathName = (char*)malloc(sizeof(char) * (file_name_len + 1));
+        bzero(tempfnode->pathName, (file_name_len + 1));
         strcpy(tempfnode->pathName, file_name);
 
         tempfnode->contents = (char*)malloc(sizeof(char) * (strlen(file_contents) + 1));
@@ -786,6 +829,17 @@ int push(char* token, int clientfd)
         i++; 
 
     }
+
+    /*
+    FileNode* printing_fptr = fileHead;
+    while(printing_fptr != NULL)
+    {
+        printf("File pathName is: %s\n", printing_fptr->pathName);
+        printf("File contents are: %s\n", printing_fptr->contents);
+        printing_fptr = printing_fptr->next;
+    }
+    */
+    
     
     //make manifest LL
     char* manifestPath = malloc(sizeof(char) * ( strlen(projectName) + 11));
@@ -806,6 +860,7 @@ int push(char* token, int clientfd)
     close(manifestFD);
 
     printf("Manifest contents are: %s\n", manifestContents);
+
     
     // make .Commit to LL
     node* commitHead = manifest_to_LL(clientCommit); // commitHead versionNum = clientid
@@ -819,6 +874,9 @@ int push(char* token, int clientfd)
         free(tempcnode);
     }
 
+
+    
+    
     // tar up project in the same project folder in a subdirectory called backups
     char* old_manifest_version = (char*)malloc(sizeof(char) * (strlen(manifestHead->versionNum) + 1));
     bzero(old_manifest_version, strlen(manifestHead->versionNum) + 1);
@@ -828,9 +886,9 @@ int push(char* token, int clientfd)
     bzero(backupPath, strlen(projectName) + 9);
     strcpy(backupPath, projectName);
     strcat(backupPath, "/");
-    strcat(backupPath, "backups");
-    printf("Backup path is: %s\n" , backupPath);
+    strcat(backupPath, "backups/");
     
+    /*
     if(!isDirectoryExists(backupPath))
     {
         printf("Creating backups directory\n");
@@ -839,7 +897,11 @@ int push(char* token, int clientfd)
         sprintf(command, "mkdir %s", backupPath);
         system(command);   
     }
-    /*
+    */
+   
+    printf("Backup path is: %s\n" , backupPath);
+    makePath(backupPath);
+    
     char* tar_path_1 = (char*)malloc(sizeof(char) * (strlen(projectName) + 10 + strlen(manifestHead->versionNum)));
     bzero(tar_path_1, strlen(projectName) + 10 + strlen(manifestHead->versionNum));
     strcpy(tar_path_1, projectName);
@@ -856,8 +918,10 @@ int push(char* token, int clientfd)
     char* cmd = (char*)malloc(sizeof(char) * (strlen(tar_path_1) + strlen(tar_path_2) + 11));
     bzero(cmd, strlen(tar_path_1) + strlen(tar_path_2) + 11);
     sprintf(cmd, "tar -cvf %s %s", tar_path_1, tar_path_2);
+    printf("Tar command is: %s\n", cmd);
+    
     system(cmd);
-
+    
     // go through .Commit and make changes accordingly
     node* cmt_ptr = commitHead;
     while(cmt_ptr != NULL)
@@ -878,14 +942,14 @@ int push(char* token, int clientfd)
                 {
                     
                     printf("Sending client: er:file not found in linked list\n");
-                    undoPush(projectName, old_manifest_version);
+                    //undoPush(projectName, old_manifest_version);
                     sendMessage("er:file not found in linked list", clientfd);
                     return 0;
                 }
                 write(new_file_fd, to_write, strlen(to_write));   
 
                 // make changes to manifest node
-                update_manifest_node(manifestHead, cmt_ptr, to_write);
+                manifestHead = update_manifest_node(manifestHead, cmt_ptr, to_write);
                 close(new_file_fd);
             }   
 
@@ -908,7 +972,7 @@ int push(char* token, int clientfd)
                 if(fileFD == -1)
                 {
                     printf("Sending client: er:file not found in project\n");
-                    undoPush(projectName, old_manifest_version);
+                    //undoPush(projectName, old_manifest_version);
                     sendMessage("er:file not found in project", clientfd);
                     return 0;
                 }
@@ -916,14 +980,14 @@ int push(char* token, int clientfd)
                 if(to_write == NULL)
                 {
                     printf("Sending client: er:file not found in linked list\n");
-                    undoPush(projectName, old_manifest_version);
+                    //undoPush(projectName, old_manifest_version);
                     sendMessage("er:file not found in linked list", clientfd);
                     return 0;
                 }
                 write(fileFD, to_write, strlen(to_write));
 
                 // modify manifest entry
-                update_manifest_node(manifestHead, cmt_ptr, to_write);
+                manifestHead = update_manifest_node(manifestHead, cmt_ptr, to_write);
                 close(fileFD);
             } 
 
@@ -932,7 +996,7 @@ int push(char* token, int clientfd)
         }
         
     }
-
+    
     // increment manifest version
 
     int new_man_ver = atoi(manifestHead->versionNum);
@@ -945,18 +1009,23 @@ int push(char* token, int clientfd)
     if(manifestFD == -1)
     {
         printf("Sending client: er:Manifest does not exist on server\n");
-        undoPush(projectName, old_manifest_version);
+        //undoPush(projectName, old_manifest_version);
         sendMessage("er:Manifest does not exist on server", clientfd);
         return 0;
     }
     LL_to_manifest(manifestHead, manifestFD); // base .Manifest on LL after changes are made
     close(manifestFD);
 
+    freeList(manifestHead);
+    freeList(commitHead);
+    free_fileLL(fileHead);
+    free(clientCommit);
+    
     manifestFD = open(manifestPath, O_RDONLY);
     if(manifestFD == -1 )
     {
         printf("Sending client: er: No manifest found, push failed\n");
-        undoPush(projectName, old_manifest_version);
+        //undoPush(projectName, old_manifest_version);
         sendMessage("er: No manifest found, push failed", clientfd);
         return 0;
     } 
@@ -964,13 +1033,15 @@ int push(char* token, int clientfd)
     char* manifest_len = int_to_string(strlen(manifestContents));
     char* finalMessage = (char*)malloc(sizeof(char) * ( strlen(manifest_len) + strlen(manifestContents) + 5));
     bzero(finalMessage, strlen(manifest_len) + strlen(manifestContents) + 5);
-    strcpy(finalMessage, manifest_len);
+    strcat(finalMessage, "su:");
+    strcat(finalMessage, manifest_len);
     strcat(finalMessage, ":");
     strcat(finalMessage, manifestContents);
-    sprintf(finalMessage, "su:%s", finalMessage);
+    printf("The finalMessage is: %s\n", finalMessage);
+    
     sendMessage(finalMessage, clientfd);
     return 0;
-    */
+    
 }
 
 int socketStuff(int fd)

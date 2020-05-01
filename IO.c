@@ -40,6 +40,7 @@ char* readFile(char* buffer, int fd)
 
 int isDirectoryExists(const char* path) 
 {
+    printf("Path being checked is: %s\n", path); // delete later
     struct stat stats;
     stat(path, &stats);
 

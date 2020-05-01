@@ -1138,13 +1138,15 @@ int main(int argc, char* argv[])
             printf("Message to be sent to server is: %s\n", fileMessage);
 
             free_fileLL(fileHead);
+            //freeList(commitHead);
             sendMessage(fileMessage, serverFD);
-            /*
+            
             char* finalResponse = readMessage(finalResponse, serverFD);
-            printf("%s\n", finalResponse);
-
+            printf("The finalResponse is: %s\n", finalResponse);
+            /*
             int i = 0;
             char* push_result = (char*)malloc(sizeof(char) * 3);
+            bzero(push_result, 3);
 
             while(finalResponse[i] != ':')
             {
@@ -1152,6 +1154,7 @@ int main(int argc, char* argv[])
                 i++;
             }
             push_result[i] = '\0';
+            printf("push_result is: %s\n", push_result);
             i++; // skip : after er: or su:
             if(strcmp(push_result, "er") == 0)
             {
