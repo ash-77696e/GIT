@@ -11,6 +11,7 @@
 #include <string.h>
 #include "../structs.h"
 #include "../IO.h"
+#include <openssl/md5.h>
 
 int clientIds;
 CommitNode* commitNodes;
@@ -41,6 +42,47 @@ int numDigits(int num)
     } while (num != 0);
 
     return count;
+}
+
+char* getHash(char* fileContents)
+{
+    unsigned char* result = malloc(sizeof(char) * strlen(fileContents));
+    char* hashedStr = (char*) malloc(sizeof(char) * 33);
+    bzero(hashedStr, 33);
+
+    MD5_CTX context;
+    MD5_Init(&context);
+    MD5_Update(&context, fileContents, strlen(fileContents));
+    MD5_Final(result, &context);
+    int i;
+    unsigned char resultstr[32];
+    for (i=0; i<16; i++) {
+        sprintf(resultstr, "%02x", result[i]);
+        strcat(hashedStr, resultstr);
+    }
+
+    return hashedStr;
+}
+
+char* int_to_string(int x)
+{
+    char* str = (char*)malloc(sizeof(char) * (numDigits(x) + 1));
+    bzero(str, numDigits(x) + 1);
+    sprintf(str, "%d", x);
+    return str;
+}
+
+char* manifestLine(char* string, node* ptr)
+{
+    strcpy(string, ptr->status);
+    strcat(string, "\t");
+    strcat(string, ptr->pathName);
+    strcat(string, "\t");
+    strcat(string, ptr->versionNum);
+    strcat(string, "\t");
+    strcat(string, ptr->hash);
+    strcat(string, "\n"); 
+    return string;
 }
 
 node* manifest_to_LL(char* manifestContents)
@@ -139,6 +181,30 @@ node* manifest_to_LL(char* manifestContents)
     }
     return head;
 }
+
+void LL_to_manifest(node* head, int fd)
+{
+    node* ptr = head;
+    while(ptr != NULL)
+    {
+        char* string = malloc(sizeof(char) * 1000);
+        bzero(string, 1000);
+
+        if(ptr == head) // write manifest version and newline
+        {
+            strcpy(string, ptr->versionNum);
+            strcat(string, "\n");
+            write(fd, string, strlen(string));
+        }
+        else
+        {
+            strcpy(string, manifestLine(string, ptr));
+            write(fd, string, strlen(string));    
+        }
+        ptr = ptr->next;
+    }
+}
+
 
 char* readMessage(char* buffer, int fd)
 {
@@ -252,6 +318,92 @@ CommitNode* addCommitNode(CommitNode* head, char* projName, int clientID, char* 
     node->next = head;
     head = node;
     return head;
+}
+
+char* search_in_fileLL(FileNode* fileHead, char* pathName)
+{
+    FileNode* ptr = fileHead;
+    while(ptr != NULL)
+    {
+        if(strcmp(ptr->pathName, pathName) == 0)
+        {
+            return ptr->contents;
+        }
+        ptr = ptr->next;
+    }
+    return NULL; // if no match is found
+}
+
+void undoPush(char* projectName, char* versionNum)
+{
+    // move tar to current working directory
+    char* mv_cmd = (char*)malloc(sizeof(char) * (strlen(projectName) + strlen(versionNum) + 9));
+    bzero(mv_cmd, strlen(projectName) + strlen(versionNum) + 9);
+    char* tar_path = (char*)malloc(sizeof(char) * (strlen(projectName) + strlen(versionNum) + 3));
+    bzero(tar_path, strlen(projectName) + strlen(versionNum) + 3);
+    strcpy(tar_path, projectName);
+    strcat(tar_path, "/");
+    strcat(tar_path, versionNum);
+    strcat(tar_path, ".tar");
+    sprintf(mv_cmd, "mv %s ./", tar_path);
+    system(mv_cmd);
+
+    // remove project directory
+    char* rm_cmd = (char*)malloc(sizeof(char) * (strlen(projectName) + 7));
+    bzero(rm_cmd, strlen(projectName) + 7);
+    sprintf(rm_cmd, "rm -r %s", projectName);
+    system(rm_cmd);
+
+    //untar into current working directory
+    char* untar_cmd = (char*)malloc(sizeof(char) * (strlen(versionNum) + 14));
+    bzero(untar_cmd, strlen(versionNum) + 14);
+    sprintf(untar_cmd, "tar -xvf %s.tar", versionNum);
+    system(untar_cmd);
+
+}
+
+node* search_in_manLL(node* manifestHead, char* pathName)
+{
+    node* ptr = manifestHead;
+    while(ptr != NULL)
+    {
+        if(strcmp(ptr->pathName, pathName) == 0)
+        {
+            return ptr;
+        }
+        ptr = ptr->next;
+    }
+    return ptr;
+}
+
+node* remove_from_manLL(node* manifestHead, char* pathName)
+{
+    node* ptr = manifestHead;
+
+    while(ptr->next != NULL)
+    {
+        if(strcmp(ptr->next->pathName, pathName) == 0)
+        {
+            ptr->next = ptr->next->next;
+            break;
+        }
+        ptr = ptr->next;
+    }
+
+    return manifestHead;
+
+}
+
+void update_manifest_node(node* manifestHead, node* cmt_ptr, char* to_write)
+{
+    node* manifest_node = search_in_manLL(manifestHead, cmt_ptr->pathName);
+    sprintf(manifest_node->status, "%s", "-"); // reset status
+    int file_version = atoi(manifest_node->versionNum);
+    file_version++;
+    char* file_version_string = int_to_string(file_version);
+    strcpy(manifest_node->versionNum, file_version_string); // increment versionNum
+    char* file_hash = getHash(to_write);
+    strcpy(manifest_node->hash, file_hash); // update hash to what client sent
 }
 
 int create(char* token, int clientfd)
@@ -431,6 +583,369 @@ int commit(char* token, int clientfd)
     printf("%s\n", commitNodes->commit);
 }
 
+int push(char* token, int clientfd)
+{
+    token = &token[3];
+    int index = 0;
+    char* project_name_length = (char*)malloc(sizeof(char) * 1000);
+    bzero(project_name_length, 1000);
+    while (token[index] != ':')
+    {
+        project_name_length[index] = token[index];
+        index++;
+    }
+    project_name_length[index] = '\0';
+    int project_name_len = atoi(project_name_length);
+    int i = 0;
+    index++; // character after : so start of projectName
+    char* projectName = (char*)malloc(sizeof(char) * ( project_name_len + 1) );
+    bzero(projectName, project_name_len + 1);
+    while (i < project_name_len)
+    {
+        projectName[i] = token[index];
+        i++;
+        index++;
+    }
+    projectName[i] = '\0';
+
+    //check if project exists on server
+
+    if(!isDirectoryExists(projectName))
+    {
+        printf("Sending client: er:project does not exist on the server\n");
+        sendMessage("er:project does not exist on the server", clientfd);
+        return 0; 
+    }
+
+    // check if stored .Commit matches .Commit client just sent
+    index++; // character after : so start of commit_length
+    char* commit_length = (char*)malloc(sizeof(char) * 1000);
+    bzero(commit_length, 1000);
+    i = 0;
+    while (token[index] != ':')
+    {
+        commit_length[i] = token[index];
+        i++;
+        index++;
+    }
+    commit_length[i] = '\0';
+    int commit_len = atoi(commit_length);
+    i = 0;
+    index++; // character after : so start of commit contents
+    char* clientCommit = (char*)malloc(sizeof(char) * (commit_len + 1));
+    bzero(clientCommit, commit_len + 1);
+    while(i < commit_len)
+    {
+        clientCommit[i] = token[index];
+        i++;
+        index++;
+    }
+
+    // check hash of client commit
+    char* client_commit_hash = getHash(clientCommit);
+
+    // see if it matches with anything in the pending commit list on the server
+
+    CommitNode* commitPtr = commitNodes; // head
+    while(commitPtr != NULL)
+    {    
+        char* server_commit_hash = getHash(commitPtr->commit); 
+        if(strcmp(client_commit_hash, server_commit_hash) == 0)
+        {
+            break; // match found
+        }
+        commitPtr = commitPtr->next;
+    }
+
+    if(commitPtr == NULL) // list of .Commits on the server side is empty or there is no match with the .Commit the client just sent
+    {
+        printf("Sending client: er:no match for .Commit was found\n");
+        sendMessage("er:no match for .Commit was found", clientfd);   // error
+        return 0; 
+    }
+    else 
+    {
+        printf("Sending client: su:match for .Commit was found\n");
+        sendMessage("su:match for .Commit was found", clientfd);   // success
+    }
+
+    token = readMessage(token, clientfd); // reading file contents sent from client 
+    index = 0;
+
+    // get numFiles
+    char* num_of_files = (char*)malloc(sizeof(char)*1000);
+    bzero(num_of_files, 1000);
+    while(token[index] != ':')
+    {
+        num_of_files[index] = token[index];
+        index++;
+    }
+    num_of_files[index] = '\0';
+    int numFiles = atoi(num_of_files);
+    i = 0;
+    int strIndex;
+    index++; // skip : after numFiles
+
+    // make FileNode list 
+    FileNode* fileHead = NULL;
+
+    while( i < numFiles) // go through rest of message (change malloc amounts later)
+    {
+        strIndex = 0;
+        char* file_name_length = (char*)malloc(sizeof(char) * 1000);
+        bzero(num_of_files, 1000);
+        while(token[index] != ':')
+        {
+            file_name_length[strIndex] = token[index];
+            index++;
+            strIndex++;
+        }
+        file_name_length[strIndex] = '\0';
+        index++; // skip : after file_name_length
+        int file_name_len = atoi(file_name_length);
+        strIndex = 0;
+        char* file_name = (char*)malloc(sizeof(char) * (file_name_len + 1));
+        bzero(file_name, file_name_len + 1);
+        while(strIndex < file_name_len)
+        {
+            file_name[strIndex] = token[index];
+            index++;
+            strIndex++;    
+        }
+        file_name[strIndex] = '\0';
+        index++; // skip : after file_name
+        strIndex = 0;
+        char* file_length = (char*)malloc(sizeof(char) * 1000);
+        bzero(file_name, 1000);
+        while(token[index] != ':')
+        {
+            file_length[strIndex] = token[index];
+            index++;
+            strIndex++;
+        }
+        file_length[strIndex] = '\0';
+        index++; // skip : after file_length
+        int file_len = atoi(file_length);
+        strIndex = 0;
+        char* file_contents = (char*)malloc(sizeof(char) * (file_len + 1));
+        bzero(file_contents, file_len + 1);
+        while(strIndex < file_len)
+        {
+            file_contents[strIndex] = token[index];
+            index++;
+            strIndex++;
+        }
+        file_contents[strIndex] = '\0';
+        index++; // skip : after file_ contents
+
+        FileNode* tempfnode = (FileNode*)malloc(sizeof(FileNode));
+
+        tempfnode->pathName = (char*)malloc(sizeof(char) * (strlen(file_name) + 1));
+        bzero(tempfnode->pathName, (strlen(file_name) + 1));
+        strcpy(tempfnode->pathName, file_name);
+
+        tempfnode->contents = (char*)malloc(sizeof(char) * (strlen(file_contents) + 1));
+        bzero(tempfnode->contents, (strlen(file_contents) + 1));
+        strcpy(tempfnode->contents, file_contents);
+
+        if (fileHead == NULL) // list is empty so assign as head
+        {
+            tempfnode->next = NULL;
+            fileHead = tempfnode;
+        }
+        else // add to end of list
+        {
+            FileNode* tmp_ptr = fileHead;
+            while(tmp_ptr->next != NULL)
+            {
+                tmp_ptr = tmp_ptr->next;
+            } 
+            tmp_ptr->next = tempfnode;
+            tempfnode->next = NULL;   
+        }
+        i++;
+
+    }
+
+    //make manifest LL
+    char* manifestPath = malloc(sizeof(char) * ( strlen(projectName) + 11));
+    bzero(manifestPath, strlen(projectName) + 11);
+    memcpy(manifestPath, projectName, strlen(projectName));
+    strcat(manifestPath, "/");
+    strcat(manifestPath, ".Manifest");
+    int manifestFD = open(manifestPath, O_RDONLY);
+    if(manifestFD == -1 )
+    {
+        printf("Sending client: er: No manifest found, push failed");
+        sendMessage("er: No manifest found, push failed", clientfd);
+        return 0;
+    }
+    char* manifestContents = (char*)malloc(sizeof(char) * 50);
+    manifestContents = readFile(manifestContents, manifestFD);
+    node* manifestHead = manifest_to_LL(manifestContents);
+    close(manifestFD);
+
+    // make .Commit to LL
+    node* commitHead = manifest_to_LL(clientCommit); // commitHead versionNum = clientid
+
+    // expire pending commits
+    commitPtr = commitNodes;
+    while(commitPtr != NULL)
+    {
+        CommitNode* tempcnode = commitPtr;
+        commitPtr = commitPtr->next;
+        free(tempcnode);
+    }
+
+    // tar up project in the same project folder in a subdirectory called backups
+    char* old_manifest_version = (char*)malloc(sizeof(char) * (strlen(manifestHead->versionNum) + 1));
+    bzero(old_manifest_version, strlen(manifestHead->versionNum) + 1);
+    strcpy(old_manifest_version, manifestHead->versionNum);
+    char* backupPath = (char*)malloc(sizeof(char) * ( strlen(projectName) + 9 ) );
+    bzero(backupPath, strlen(projectName) + 9);
+    strcpy(backupPath, projectName);
+    strcat(backupPath, "/");
+    strcat(backupPath, "backups");
+    if(!isDirectoryExists(backupPath))
+    {
+        char* command = (char*)malloc(sizeof(char) * (strlen(backupPath) + 7 ));
+        bzero(command, strlen(backupPath) + 7);
+        sprintf(command, "mkdir %s", backupPath);
+        system(command);
+    }
+    char* tar_path_1 = (char*)malloc(sizeof(char) * (strlen(projectName) + 10 + strlen(manifestHead->versionNum)));
+    bzero(tar_path_1, strlen(projectName) + 10 + strlen(manifestHead->versionNum));
+    strcpy(tar_path_1, projectName);
+    strcat(tar_path_1, "/backups/");
+    char* tar_project = (char*)malloc(sizeof(char) * (strlen(manifestHead->versionNum) + 5));
+    bzero(tar_project, strlen(manifestHead->versionNum) + 5);
+    strcpy(tar_project, manifestHead->versionNum);
+    strcat(tar_project, ".tar");
+    strcat(tar_path_1, tar_project); 
+    char* tar_path_2 = (char*)malloc(sizeof(char) * (strlen(projectName) + 2));
+    bzero(tar_path_2, strlen(projectName) + 2 );
+    strcpy(tar_path_2, projectName);
+    strcat(tar_path_2, "/");
+    char* cmd = (char*)malloc(sizeof(char) * (strlen(tar_path_1) + strlen(tar_path_2) + 11));
+    bzero(cmd, strlen(tar_path_1) + strlen(tar_path_2) + 11);
+    sprintf(cmd, "tar -cvf %s %s", tar_path_1, tar_path_2);
+    system(cmd);
+
+    // go through .Commit and make changes accordingly
+    node* cmt_ptr = commitHead;
+    while(cmt_ptr != NULL)
+    {
+        if(cmt_ptr == commitHead) // can skip clientid
+        {
+            cmt_ptr = cmt_ptr->next;
+            continue;
+        }
+        else 
+        {
+            if(strcmp(cmt_ptr->status, "A") == 0) // add file to project directory 
+            {
+                // write creates new file in project directory
+                int new_file_fd = open(cmt_ptr->pathName, O_RDWR | O_CREAT, 00600);
+                char* to_write = search_in_fileLL(fileHead, cmt_ptr->pathName); 
+                if(to_write == NULL)
+                {
+                    
+                    printf("Sending client: er:file not found in linked list\n");
+                    undoPush(projectName, old_manifest_version);
+                    sendMessage("er:file not found in linked list", clientfd);
+                    return 0;
+                }
+                write(new_file_fd, to_write, strlen(to_write));   
+
+                // make changes to manifest node
+                update_manifest_node(manifestHead, cmt_ptr, to_write);
+                close(new_file_fd);
+            }   
+
+            else if(strcmp(cmt_ptr->status, "R") == 0) // remove file from project directory
+            {
+                // removes file from project
+                char* remove_cmd = (char*)malloc(sizeof(char) * ( strlen(cmt_ptr->pathName)+ 7 ));
+                bzero(remove_cmd, strlen(cmt_ptr->pathName)+ 7);
+                sprintf(remove_cmd, "rm -r %s", cmt_ptr->pathName);
+                system(remove_cmd);
+
+                // remove node from manifest
+                manifestHead = remove_from_manLL(manifestHead, cmt_ptr->pathName);
+            }
+
+            else if(strcmp(cmt_ptr->status, "M") == 0) // overwrite file in project directory
+            {
+                // modify existing file
+                int fileFD = open(cmt_ptr->pathName, O_RDWR | O_CREAT | O_TRUNC, 00600);
+                if(fileFD == -1)
+                {
+                    printf("Sending client: er:file not found in project\n");
+                    undoPush(projectName, old_manifest_version);
+                    sendMessage("er:file not found in project", clientfd);
+                    return 0;
+                }
+                char* to_write = search_in_fileLL(fileHead, cmt_ptr->pathName); 
+                if(to_write == NULL)
+                {
+                    printf("Sending client: er:file not found in linked list\n");
+                    undoPush(projectName, old_manifest_version);
+                    sendMessage("er:file not found in linked list", clientfd);
+                    return 0;
+                }
+                write(fileFD, to_write, strlen(to_write));
+
+                // modify manifest entry
+                update_manifest_node(manifestHead, cmt_ptr, to_write);
+                close(fileFD);
+            } 
+
+            cmt_ptr = cmt_ptr->next; 
+
+        }
+        
+    }
+
+    // increment manifest version
+
+    int new_man_ver = atoi(manifestHead->versionNum);
+    new_man_ver++;
+    char* new_man_version = int_to_string(new_man_ver);
+    strcpy(manifestHead->versionNum, new_man_version);
+
+    // overwrite manifest
+    manifestFD = open(manifestPath, O_RDWR | O_CREAT | O_TRUNC, 00600 );
+    if(manifestFD == -1)
+    {
+        printf("Sending client: er:Manifest does not exist on server\n");
+        undoPush(projectName, old_manifest_version);
+        sendMessage("er:Manifest does not exist on server", clientfd);
+        return 0;
+    }
+    LL_to_manifest(manifestHead, manifestFD); // base .Manifest on LL after changes are made
+    close(manifestFD);
+
+    manifestFD = open(manifestPath, O_RDONLY);
+    if(manifestFD == -1 )
+    {
+        printf("Sending client: er: No manifest found, push failed\n");
+        undoPush(projectName, old_manifest_version);
+        sendMessage("er: No manifest found, push failed", clientfd);
+        return 0;
+    } 
+    manifestContents = readFile(manifestContents, manifestFD); // new contents
+    char* manifest_len = int_to_string(strlen(manifestContents));
+    char* finalMessage = (char*)mallloc(sizeof(char) * ( strlen(manifest_len) + strlen(manifestContents) + 5));
+    bzero(finalMessage, strlen(manifest_len) + strlen(manifestContents) + 5);
+    strcpy(finalMessage, manifest_len);
+    strcat(finalMessage, ":");
+    strcat(finalMessage, manifestContents);
+    sprintf(finalMessage, "su:%s", finalMessage);
+    sendMessage(finalMessage, clientfd);
+    return 0;
+
+}
+
 int socketStuff(int fd)
 { 
     char* buffer = readMessage(buffer, fd);
@@ -446,7 +961,8 @@ int socketStuff(int fd)
         checkout(buffer, fd);
     else if(strcmp(tokens, "cm") == 0)
         commit(buffer, fd);
-    
+    else if(strcmp(tokens, "pu") == 0)
+        push(buffer, fd);
     printf("Client: %d disconnected\n", fd);
     close(fd);
 
