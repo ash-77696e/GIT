@@ -883,8 +883,8 @@ int push(char* token, int clientfd)
     bzero(old_manifest_version, strlen(manifestHead->versionNum) + 1);
     strcpy(old_manifest_version, manifestHead->versionNum);
     printf("Old manifest version is: %s\n", old_manifest_version);
-    char* backupPath = (char*)malloc(sizeof(char) * ( strlen(projectName) + 9 ) );
-    bzero(backupPath, strlen(projectName) + 9);
+    char* backupPath = (char*)malloc(sizeof(char) * ( strlen(projectName) + 10 ) );
+    bzero(backupPath, strlen(projectName) + 10);
     strcpy(backupPath, projectName);
     strcat(backupPath, "/");
     strcat(backupPath, "backups/");
@@ -903,8 +903,8 @@ int push(char* token, int clientfd)
     printf("Backup path is: %s\n" , backupPath);
     makePath(backupPath);
     
-    char* tar_path_1 = (char*)malloc(sizeof(char) * (strlen(projectName) + 10 + strlen(manifestHead->versionNum)));
-    bzero(tar_path_1, strlen(projectName) + 10 + strlen(manifestHead->versionNum));
+    char* tar_path_1 = (char*)malloc(sizeof(char) * (strlen(projectName) + 16 + strlen(manifestHead->versionNum)));
+    bzero(tar_path_1, strlen(projectName) + 16 + strlen(manifestHead->versionNum));
     strcpy(tar_path_1, projectName);
     strcat(tar_path_1, "/backups/");
     char* tar_project = (char*)malloc(sizeof(char) * (strlen(manifestHead->versionNum) + 5));

@@ -279,6 +279,12 @@ void freeList(node* head)
     {
         node* temp = ptr;
         ptr = ptr->next;
+        /*
+        free(temp->status);
+        free(temp->pathName);
+        free(temp->versionNum);
+        free(temp->hash);
+        */
         free(temp); 
     }
 }
@@ -705,6 +711,10 @@ void free_fileLL(FileNode* fileHead)
     {
         FileNode* temp_fptr = fptr;
         fptr = fptr->next;
+        /*
+        free(fptr->contents);
+        free(fptr->pathName);
+        */
         free(temp_fptr);
     }
 }
@@ -997,13 +1007,12 @@ int main(int argc, char* argv[])
             }
 
             // make .Commit into a LL
-            char* commitContents = (char*)malloc(sizeof(char) * 100);
-            commitContents = readFile(commitContents, commitFD);
+            char* commitContents = readFile(commitContents, commitFD);
 
             // check if server has the same .Commit
 
             // make message to send
-            total_message_length += 6; // number of colons + "pu"
+            total_message_length += 7; // number of colons + "pu"
             total_message_length += strlen(projectName) + numDigits(strlen(projectName)) + strlen(commitContents) + numDigits(strlen(commitContents));
             char* message = (char*)malloc( sizeof(char) * (total_message_length + 1) ); // +1 is for \0
             bzero(message, total_message_length + 1);
@@ -1055,6 +1064,7 @@ int main(int argc, char* argv[])
             commitHead = manifest_to_LL(commitContents); // change name from manifest_to_LL to file_to_LL later
             
             free(message);
+            free(serverResponse);
             free(commitContents);
             close(commitFD);
 
@@ -1080,8 +1090,7 @@ int main(int argc, char* argv[])
                         removeCommit(commitPath);
                         return 0;
                     }
-                    char* fileContents = (char*)malloc(sizeof(char) * 10);
-                    fileContents = readFile(fileContents, fd);
+                    char* fileContents = readFile(fileContents, fd);
                     printf("Contents of %s is %s\n", ptr->pathName, fileContents);
                     close(fd);
 
@@ -1146,18 +1155,19 @@ int main(int argc, char* argv[])
             }
 
             char* num_of_files = int_to_string(numFiles);
-            strcat(num_of_files, ":");
-            fileMessage = strcat(num_of_files, fileMessage);
-            printf("Message to be sent to server is: %s\n", fileMessage);
+            char* secondMessage = (char*)malloc(sizeof(char) * (strlen(num_of_files) + strlen(fileMessage) + 2));
+            bzero(secondMessage, strlen(num_of_files) + strlen(fileMessage) + 2);
+            sprintf(secondMessage, "%s:%s", num_of_files, fileMessage);
+            printf("Message to be sent to server is: %s\n", secondMessage);
 
             free_fileLL(fileHead);
-            sendMessage(fileMessage, serverFD);
+            sendMessage(secondMessage, serverFD);
             freeList(commitHead);
             free(fileMessage);
             
             char* finalResponse = readMessage(finalResponse, serverFD);
             printf("The finalResponse is: %s\n", finalResponse);
-            /*
+            
             int i = 0;
             char* push_result = (char*)malloc(sizeof(char) * 3);
             bzero(push_result, 3);
@@ -1215,7 +1225,7 @@ int main(int argc, char* argv[])
                 
                 printf("Successful push\n");
             }
-            */
+            
         }
         
     }
