@@ -142,8 +142,8 @@ char* getManifestPath(char* projectName)
 
 char* filePath(char* projectName, char* fileName)
 {
-    char* result = malloc(sizeof(char) * ( strlen(projectName) + strlen(fileName) + 1));
-    bzero(result, strlen(projectName) + strlen(fileName) + 1 );
+    char* result = malloc(sizeof(char) * ( strlen(projectName) + strlen(fileName) + 2));
+    bzero(result, strlen(projectName) + strlen(fileName) + 2 );
     memcpy(result, projectName, strlen(projectName));
     strcat(result, "/");
     strcat(result, fileName);

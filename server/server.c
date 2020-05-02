@@ -939,22 +939,45 @@ int push(char* token, int clientfd)
                 // write creates new file in project directory
                 int new_file_fd = open(cmt_ptr->pathName, O_RDWR | O_CREAT, 00600);
                 char* to_write = search_in_fileLL(fileHead, cmt_ptr->pathName); 
+                printf("File to be added has contents: %s\n", to_write);
                 if(to_write == NULL)
                 {
                     
                     printf("Sending client: er:file not found in linked list\n");
-                    //undoPush(projectName, old_manifest_version);
+                    undoPush(projectName, old_manifest_version);
                     sendMessage("er:file not found in linked list", clientfd);
                     return 0;
                 }
                 write(new_file_fd, to_write, strlen(to_write));   
 
-                // make changes to manifest node
-                manifestHead = update_manifest_node(manifestHead, cmt_ptr, to_write);
+                // make new manifest node
+                
+                node* add_to_man = (node*)malloc(sizeof(node));
+                add_to_man = nullNode(add_to_man);
+                strcpy(add_to_man->status, "-");
+                strcpy(add_to_man->pathName, cmt_ptr->pathName);
+                strcpy(add_to_man->versionNum, "0");
+                strcpy(add_to_man->hash, getHash(to_write)); 
+                add_to_man->next = NULL;
+
+                node* manPtr = manifestHead;
+                while(manPtr->next != NULL)
+                {
+                    manPtr = manPtr->next;
+                }
+                manPtr->next = add_to_man;
+                printf("Added entry to manifest\n");
+                node* printing = manifestHead;
+                while(printing != NULL)
+                {
+                    printf("Manifest has: %s\n", printing->pathName);
+                    printing = printing->next;
+                }
+
                 close(new_file_fd);
             }   
 
-            else if(strcmp(cmt_ptr->status, "R") == 0) // remove file from project directory
+            else if(strcmp(cmt_ptr->status, "D") == 0) // remove file from project directory
             {
                 // removes file from project
                 char* remove_cmd = (char*)malloc(sizeof(char) * ( strlen(cmt_ptr->pathName)+ 7 ));
@@ -964,6 +987,14 @@ int push(char* token, int clientfd)
 
                 // remove node from manifest
                 manifestHead = remove_from_manLL(manifestHead, cmt_ptr->pathName);
+                printf("Removed entry from manifest\n");
+
+                node* printing = manifestHead;
+                while(printing != NULL)
+                {
+                    printf("Manifest has: %s\n", printing->pathName);
+                    printing = printing->next;
+                }
             }
 
             else if(strcmp(cmt_ptr->status, "M") == 0) // overwrite file in project directory
@@ -973,7 +1004,7 @@ int push(char* token, int clientfd)
                 if(fileFD == -1)
                 {
                     printf("Sending client: er:file not found in project\n");
-                    //undoPush(projectName, old_manifest_version);
+                    undoPush(projectName, old_manifest_version);
                     sendMessage("er:file not found in project", clientfd);
                     return 0;
                 }
@@ -981,7 +1012,7 @@ int push(char* token, int clientfd)
                 if(to_write == NULL)
                 {
                     printf("Sending client: er:file not found in linked list\n");
-                    //undoPush(projectName, old_manifest_version);
+                    undoPush(projectName, old_manifest_version);
                     sendMessage("er:file not found in linked list", clientfd);
                     return 0;
                 }
@@ -998,6 +1029,7 @@ int push(char* token, int clientfd)
         
     }
     
+    printf("Updating manifest now\n");
     // increment manifest version
 
     int new_man_ver = atoi(manifestHead->versionNum);
@@ -1010,7 +1042,7 @@ int push(char* token, int clientfd)
     if(manifestFD == -1)
     {
         printf("Sending client: er:Manifest does not exist on server\n");
-        //undoPush(projectName, old_manifest_version);
+        undoPush(projectName, old_manifest_version);
         sendMessage("er:Manifest does not exist on server", clientfd);
         return 0;
     }
@@ -1026,7 +1058,7 @@ int push(char* token, int clientfd)
     if(manifestFD == -1 )
     {
         printf("Sending client: er: No manifest found, push failed\n");
-        //undoPush(projectName, old_manifest_version);
+        undoPush(projectName, old_manifest_version);
         sendMessage("er: No manifest found, push failed", clientfd);
         return 0;
     } 
