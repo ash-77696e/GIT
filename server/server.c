@@ -380,31 +380,41 @@ char* search_in_fileLL(FileNode* fileHead, char* pathName)
     return NULL; // if no match is found
 }
 
-void undoPush(char* projectName, char* versionNum)
+void untar_project(char* projectName, char* versionNum)
 {
     // move tar to current working directory
-    char* mv_cmd = (char*)malloc(sizeof(char) * (strlen(projectName) + strlen(versionNum) + 9));
-    bzero(mv_cmd, strlen(projectName) + strlen(versionNum) + 9);
-    char* tar_path = (char*)malloc(sizeof(char) * (strlen(projectName) + strlen(versionNum) + 3));
-    bzero(tar_path, strlen(projectName) + strlen(versionNum) + 3);
+    char* mv_cmd = (char*)malloc(sizeof(char) * (strlen(projectName) + strlen(versionNum) + 20));
+    bzero(mv_cmd, strlen(projectName) + strlen(versionNum) + 20);
+    char* tar_path = (char*)malloc(sizeof(char) * (strlen(projectName) + strlen(versionNum) + 14));
+    bzero(tar_path, strlen(projectName) + strlen(versionNum) + 14);
     strcpy(tar_path, projectName);
-    strcat(tar_path, "/");
+    strcat(tar_path, "/backups/");
     strcat(tar_path, versionNum);
     strcat(tar_path, ".tar");
     sprintf(mv_cmd, "mv %s ./", tar_path);
+    printf("mv_cmd is : %s\n", mv_cmd);
     system(mv_cmd);
 
     // remove project directory
     char* rm_cmd = (char*)malloc(sizeof(char) * (strlen(projectName) + 7));
     bzero(rm_cmd, strlen(projectName) + 7);
     sprintf(rm_cmd, "rm -r %s", projectName);
+    printf("rm_cmd is : %s\n", rm_cmd);
     system(rm_cmd);
 
     //untar into current working directory
     char* untar_cmd = (char*)malloc(sizeof(char) * (strlen(versionNum) + 14));
     bzero(untar_cmd, strlen(versionNum) + 14);
     sprintf(untar_cmd, "tar -xvf %s.tar", versionNum);
+    printf("untar_cmd is: %s\n", untar_cmd);
     system(untar_cmd);
+
+    // remove tar in current working directory
+    char* rm_tar = (char*)malloc(sizeof(char) * (strlen(versionNum) + 11) );
+    bzero(rm_tar, strlen(versionNum) + 11);
+    sprintf(rm_tar, "rm -r %s.tar", versionNum);
+    printf("rm_tar is: %s\n", rm_tar);
+    system(rm_tar);
 
 }
 
@@ -897,7 +907,8 @@ int push(char* token, int clientfd)
     // make .Commit to LL
     node* commitHead = manifest_to_LL(clientCommit); // commitHead versionNum = clientid
 
-    // expire pending commits
+    // expire pending commits (NEED TO FIX)
+    /*
     commitPtr = commitNodes;
     while(commitPtr != NULL)
     {
@@ -905,6 +916,7 @@ int push(char* token, int clientfd)
         commitPtr = commitPtr->next;
         free(tempcnode);
     }
+    */
 
 
     
@@ -975,7 +987,7 @@ int push(char* token, int clientfd)
                 {
                     
                     printf("Sending client: er:file not found in linked list\n");
-                    undoPush(projectName, old_manifest_version);
+                    untar_project(projectName, old_manifest_version);
                     sendMessage("er:file not found in linked list", clientfd);
                     return 0;
                 }
@@ -1035,7 +1047,7 @@ int push(char* token, int clientfd)
                 if(fileFD == -1)
                 {
                     printf("Sending client: er:file not found in project\n");
-                    undoPush(projectName, old_manifest_version);
+                    untar_project(projectName, old_manifest_version);
                     sendMessage("er:file not found in project", clientfd);
                     return 0;
                 }
@@ -1043,7 +1055,7 @@ int push(char* token, int clientfd)
                 if(to_write == NULL)
                 {
                     printf("Sending client: er:file not found in linked list\n");
-                    undoPush(projectName, old_manifest_version);
+                    untar_project(projectName, old_manifest_version);
                     sendMessage("er:file not found in linked list", clientfd);
                     return 0;
                 }
@@ -1073,7 +1085,7 @@ int push(char* token, int clientfd)
     if(manifestFD == -1)
     {
         printf("Sending client: er:Manifest does not exist on server\n");
-        undoPush(projectName, old_manifest_version);
+        untar_project(projectName, old_manifest_version);
         sendMessage("er:Manifest does not exist on server", clientfd);
         return 0;
     }
@@ -1089,7 +1101,7 @@ int push(char* token, int clientfd)
     if(manifestFD == -1 )
     {
         printf("Sending client: er: No manifest found, push failed\n");
-        undoPush(projectName, old_manifest_version);
+        untar_project(projectName, old_manifest_version);
         sendMessage("er: No manifest found, push failed", clientfd);
         return 0;
     } 
@@ -1173,6 +1185,80 @@ int history(char* token, int clientfd)
     
 }
 
+int rollback(char* token, int clientfd)
+{
+    printf("Client sent %s\n", &token[3]);
+    token = &token[3];
+
+    int index = 0;
+    char* project_name_length = (char*)malloc(sizeof(char) * 100);
+    bzero(project_name_length, 100);
+    while(token[index] != ':')
+    {
+        project_name_length[index] = token[index];
+        index++;    
+    }  
+    project_name_length[index] = '\0';
+    index++; // skip : after project_name_length
+
+    int project_name_len = atoi(project_name_length);
+    int strIndex = 0;
+    char* projectName = (char*)malloc(sizeof(char) * (project_name_len + 1));
+    bzero(projectName, project_name_len + 1);
+    while(strIndex < project_name_len)
+    {
+        projectName[strIndex] = token[index];
+        strIndex++;
+        index++;
+    }
+    projectName[strIndex] = '\0';
+    index++; // skip : after project name
+    char* projectPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 2));
+    bzero(projectPath, strlen(projectName) + 2 );
+    strcpy(projectPath, projectName);
+    strcat(projectPath, "/");
+
+    if(!isDirectoryExists(projectPath))
+    {
+        printf("Project could not be found on the server");
+        sendMessage("er: Project could not be found on the server", clientfd);
+        return 0;
+    }
+
+    strIndex = 0;
+    char* version_length = (char*)malloc(sizeof(char) * 100);
+    bzero(version_length, 100);
+    while(token[index] != ':')
+    {
+        version_length[strIndex] = token[index];
+        strIndex++;
+        index++;
+    }
+    version_length[strIndex] = '\0';
+    int version_len = atoi(version_length);
+    printf("version_len is %d\n", version_len);
+    index++; // skip : after version name length
+    strIndex = 0;
+    char* projectVersion = (char*)malloc(sizeof(char) * (version_len + 1));
+    bzero(projectVersion, version_len + 1);
+    while(strIndex < version_len)
+    {
+        projectVersion[strIndex] = token[index];
+        strIndex++;
+        index++;
+    }
+    projectVersion[strIndex] = '\0';
+
+    free(project_name_length);
+    free(version_length);
+    printf("Project name is: %s\n", projectName);
+    printf("Project version is: %s\n", projectVersion);
+
+    untar_project(projectName, projectVersion);
+    sendMessage("su:Rollback successful", clientfd);
+
+}
+
 int socketStuff(int fd)
 { 
     char* buffer = readMessage(buffer, fd);
@@ -1192,6 +1278,8 @@ int socketStuff(int fd)
         push(buffer, fd);
     else if(strcmp(tokens, "hs") == 0)
         history(buffer, fd);
+    else if(strcmp(tokens, "ro") == 0)
+        rollback(buffer, fd);
     printf("Client: %d disconnected\n", fd);
     close(fd);
 

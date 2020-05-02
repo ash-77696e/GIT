@@ -1253,6 +1253,7 @@ int main(int argc, char* argv[])
                 status[index] = response[index];
                 index++;
             }
+            status[index] = '\0';
             index++; // skip : after status (either er or su)
 
             if(strcmp(status, "er") == 0)
@@ -1288,6 +1289,55 @@ int main(int argc, char* argv[])
                 historyContents[strIndex] = '\0';
                 printf("History of %s:\n%s", projectName, historyContents);
             }
+        }
+        if(strcmp(argv[1], "rollback") == 0)
+        {
+            char* projectName = argv[2];
+            char* projectVersion = argv[3];
+            char* project_name_length = int_to_string(strlen(projectName));
+            char* version_length = int_to_string(strlen(projectVersion));
+
+            int serverFD = create_socket();
+
+            // malloc space for message to request rollback of a project with specified version number
+
+            char* message = (char*)malloc(sizeof(char) * (strlen(projectName) + strlen(projectVersion) + strlen(project_name_length) + strlen(version_length) + 7));
+            bzero(message, strlen(projectName) + strlen(projectVersion) + strlen(project_name_length) + strlen(version_length) + 7 );
+            strcpy(message, "ro:");
+            strcat(message, project_name_length);
+            strcat(message, ":");
+            strcat(message, projectName);
+            strcat(message, ":");
+            strcat(message, version_length);
+            strcat(message, ":");
+            strcat(message, projectVersion);
+
+            printf("Sending server request to rollback\n");
+            printf("Message to be sent to server is %s\n", message);
+
+            sendMessage(message, serverFD);
+            char* responseStatus = readMessage(responseStatus, serverFD);
+            printf("Server sent: %s\n", responseStatus);
+            int index = 0;
+            char* status = (char*)malloc(sizeof(char) * 3);
+            bzero(status, 3);
+            while(responseStatus[index] != ':')
+            {
+                status[index] = responseStatus[index];
+                index++;
+            }
+            status[index] = '\0';
+
+            if(strcmp(status, "er") == 0)
+            {
+                printf("Rollback failed\n");
+            }
+            if(strcmp(status, "su") == 0)
+            {
+                printf("Rollback successful\n");
+            }
+            close(serverFD);
+
         }
         
     }
