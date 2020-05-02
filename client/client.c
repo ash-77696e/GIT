@@ -1222,10 +1222,72 @@ int main(int argc, char* argv[])
                 // delete copy of .Commit
 
                 removeCommit(commitPath);
-                
+                close(serverFD);
                 printf("Successful push\n");
             }
             
+        }
+        if(strcmp(argv[1] , "history") == 0)
+        {
+            char* projectName = argv[2];
+            char* project_name_length = int_to_string(strlen(projectName));
+
+            int serverFD = create_socket();
+            
+            char* message = (char*)malloc(sizeof(char) * (strlen(projectName) + strlen(project_name_length) + 5));
+            bzero(message, strlen(projectName) + strlen(project_name_length) + 5);
+            strcpy(message, "hs:");
+            strcat(message, project_name_length);
+            strcat(message, ":");
+            strcat(message, projectName);
+
+            sendMessage(message, serverFD);
+
+            char* response = readMessage(response, serverFD);
+
+            int index = 0;
+            char* status = (char*)malloc(sizeof(char) * 3);
+            bzero(status, 3);
+            while(response[index] != ':')
+            {
+                status[index] = response[index];
+                index++;
+            }
+            index++; // skip : after status (either er or su)
+
+            if(strcmp(status, "er") == 0)
+            {
+                printf("Failed to get history of %s from server\n", projectName);
+                return 0;
+
+            }
+            if(strcmp(status, "su") == 0)
+            {
+                char* history_length = (char*)malloc(sizeof(char) * strlen(response));
+                bzero(history_length, strlen(response));
+                int strIndex = 0;
+                while(response[index] != ':')
+                {
+                    history_length[strIndex] = response[index];
+                    strIndex++;
+                    index++;
+                }
+                history_length[strIndex] = '\0';
+                int history_len = atoi(history_length);
+                index++; // skip : after history_length
+
+                strIndex = 0;
+                char* historyContents = (char*)malloc(sizeof(char) * (history_len + 1));
+                bzero(historyContents, history_len + 1);
+                while(strIndex < history_len)
+                {
+                    historyContents[strIndex] = response[index];
+                    strIndex++;
+                    index++;
+                }
+                historyContents[strIndex] = '\0';
+                printf("History of %s:\n%s", projectName, historyContents);
+            }
         }
         
     }

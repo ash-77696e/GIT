@@ -453,6 +453,33 @@ node* update_manifest_node(node* manifestHead, node* cmt_ptr, char* to_write)
     return manifestHead;
 }
 
+void addToHistory(node* commitHead, char* old_manifest_version, char* projectName)
+{
+    char* historyPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 10 ));
+    bzero(historyPath, strlen(projectName) + 10);
+    strcpy(historyPath, projectName);
+    strcat(historyPath, "/.History");
+
+    int historyFD = open(historyPath, O_RDWR | O_CREAT | O_APPEND, 00600);
+
+    write(historyFD, old_manifest_version, strlen(old_manifest_version));
+    write(historyFD, "\n", 1);
+
+    node* ptr = commitHead->next;
+    while(ptr != NULL)
+    {
+        write(historyFD, ptr->status, strlen(ptr->status));
+        write(historyFD, "\t", 1);
+        write(historyFD, ptr->pathName, strlen(ptr->pathName));
+        write(historyFD, "\t", 1);
+        write(historyFD, ptr->hash, strlen(ptr->hash));
+        write(historyFD, "\n", 1);
+        ptr = ptr->next;
+    }
+    write(historyFD, "\n", 1);
+
+}
+
 int create(char* token, int clientfd)
 {
     token = &token[3];
@@ -658,8 +685,12 @@ int push(char* token, int clientfd)
     printf("project name is %s\n", projectName);
     
     //check if project exists on server
+    char* projectPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 2));
+    bzero(projectPath, strlen(projectName) + 2 );
+    strcpy(projectPath, projectName);
+    strcat(projectPath, "/");
 
-    if(!isDirectoryExists(projectName))
+    if(!isDirectoryExists(projectPath))
     {
         printf("Sending client: er:project does not exist on the server\n");
         sendMessage("er:project does not exist on the server", clientfd);
@@ -1050,7 +1081,7 @@ int push(char* token, int clientfd)
     close(manifestFD);
 
     freeList(manifestHead);
-    freeList(commitHead);
+    //freeList(commitHead);
     free_fileLL(fileHead);
     //free(clientCommit);
     
@@ -1062,6 +1093,12 @@ int push(char* token, int clientfd)
         sendMessage("er: No manifest found, push failed", clientfd);
         return 0;
     } 
+
+    // Create or add to .History based on .Commit LL
+    addToHistory(commitHead, old_manifest_version, projectName);
+
+
+    freeList(commitHead);
     manifestContents = readFile(manifestContents, manifestFD); // new contents
     char* manifest_len = int_to_string(strlen(manifestContents));
     char* finalMessage = (char*)malloc(sizeof(char) * ( strlen(manifest_len) + strlen(manifestContents) + 5));
@@ -1074,6 +1111,65 @@ int push(char* token, int clientfd)
     sendMessage(finalMessage, clientfd);
     //free(finalMessage);
     return 0;
+    
+}
+
+int history(char* token, int clientfd)
+{
+    printf("Client sent %s\n", &token[3]);
+    token = &token[3];  
+    int index = 0;
+    char* project_name_length = (char*)malloc(sizeof(char) * 100);
+    bzero(project_name_length, 100);
+    while(token[index] != ':')
+    {
+        project_name_length[index] = token[index];
+        index++;    
+    }  
+    project_name_length[index] = '\0';
+    index++; // skip : after project_name_length
+
+    int project_name_len = atoi(project_name_length);
+    int strIndex = 0;
+    char* projectName = (char*)malloc(sizeof(char) * (project_name_len + 1));
+    bzero(projectName, project_name_len + 1);
+    while(strIndex < project_name_len)
+    {
+        projectName[strIndex] = token[index];
+        strIndex++;
+        index++;
+    }
+    projectName[strIndex] = '\0';
+
+    char* projectPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 2));
+    bzero(projectPath, strlen(projectName) + 2 );
+    strcpy(projectPath, projectName);
+    strcat(projectPath, "/");
+
+    if(!isDirectoryExists(projectPath))
+    {
+        printf("Project could not be found on the server");
+        sendMessage("er: Project could not be found on the server", clientfd);
+        return 0;
+    }
+
+    char* historyPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 10 ));
+    bzero(historyPath, strlen(projectName) + 10);
+    strcpy(historyPath, projectName);
+    strcat(historyPath, "/.History");
+
+    int historyFD = open(historyPath, O_RDONLY);
+    char* historyContents = readFile(historyContents, historyFD);
+    char* history_length = int_to_string(strlen(historyContents));
+    char* finalMessage = (char*)malloc(sizeof(char) * (strlen(historyContents) + strlen(history_length) + 5));
+    bzero(finalMessage, strlen(historyContents) + strlen(history_length) + 5);
+    strcpy(finalMessage, "su:");
+    strcat(finalMessage, history_length);
+    strcat(finalMessage, ":");
+    strcat(finalMessage, historyContents);
+
+    printf("Sending client: %s\n", finalMessage);
+    sendMessage(finalMessage, clientfd);
     
 }
 
@@ -1094,6 +1190,8 @@ int socketStuff(int fd)
         commit(buffer, fd);
     else if(strcmp(tokens, "pu") == 0)
         push(buffer, fd);
+    else if(strcmp(tokens, "hs") == 0)
+        history(buffer, fd);
     printf("Client: %d disconnected\n", fd);
     close(fd);
 
