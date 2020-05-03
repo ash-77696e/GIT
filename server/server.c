@@ -1280,6 +1280,50 @@ int update(char* token, int clientfd)
     free(manifestContents);
 }
 
+int upgrade(char* token, int clientfd)
+{
+    printf("Client sent %s\n", &token[3]);
+    token = &token[3];  
+    int index = 0;
+    char* project_name_length = (char*)malloc(sizeof(char) * 100);
+    bzero(project_name_length, 100);
+    while(token[index] != ':')
+    {
+        project_name_length[index] = token[index];
+        index++;    
+    }  
+    project_name_length[index] = '\0';
+    index++; // skip : after project_name_length
+
+    int project_name_len = atoi(project_name_length);
+    int strIndex = 0;
+    char* projectName = (char*)malloc(sizeof(char) * (project_name_len + 1));
+    bzero(projectName, project_name_len + 1);
+    while(strIndex < project_name_len)
+    {
+        projectName[strIndex] = token[index];
+        strIndex++;
+        index++;
+    }
+    projectName[strIndex] = '\0';
+
+    char* projectPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 2));
+    bzero(projectPath, strlen(projectName) + 2 );
+    strcpy(projectPath, projectName);
+    strcat(projectPath, "/");
+
+    if(!isDirectoryExists(projectPath))
+    {
+        printf("Project could not be found on the server");
+        sendMessage("er: Project could not be found on the server", clientfd);
+        return 0;
+    }
+
+    sendMessage("su: Project exists on the server", clientfd);
+    
+
+}
+
 int socketStuff(int fd)
 { 
     char* buffer = readMessage(buffer, fd);

@@ -635,7 +635,7 @@ void createSentFiles(char* buffer)
             bufferIndex++;
         }
         bufferIndex++;
-        int fd = open(path, O_RDWR | O_CREAT, 00600);
+        int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, 00600);
         write(fd, data, strlen(data));
         close(fd);
         free(data);
@@ -1607,6 +1607,116 @@ int main(int argc, char* argv[])
                 freeList(updateList);
                 return 0;
             }
+
+            char* projectName = argv[2];
+            char* project_name_length = int_to_string(strlen(projectName));
+
+            int serverFD = create_socket();
+            
+            char* message = (char*)malloc(sizeof(char) * (strlen(projectName) + strlen(project_name_length) + 5));
+            bzero(message, strlen(projectName) + strlen(project_name_length) + 5);
+            strcpy(message, "ug:");
+            strcat(message, project_name_length);
+            strcat(message, ":");
+            strcat(message, projectName);
+
+            sendMessage(message, serverFD);
+            free(message);
+            char* projectExists = readMessage(projectExists, serverFD);
+
+            if(projectExists[0] == 'e' && projectExists[0] == 'r' && projectExists[0] == ':')
+            {
+                printf("Server sent: %s\n", projectExists);
+                free(projectExists);
+                return 0;
+            }
+            if(projectExists[0] == 's' && projectExists[0] == 'u' && projectExists[0] == ':')
+            {
+                printf("Server sent: %s\n", projectExists);
+            }
+
+            int numFiles = 0;
+            node* update_ptr = updateList->next;
+            FileNode* fileList = NULL;
+            while(update_ptr != NULL) // go through update list and 
+            {
+                if(strcmp(update_ptr->status, "D") == 0)
+                {
+                    remove(update_ptr->pathName); // removes file from client's local project copy / update manifest later baseed on .Update
+                }
+                if(strcmp(update_ptr->status, "A") == 0 || strcmp(update_ptr->status, "M") == 0)
+                {
+                    FileNode* tempfnode = (FileNode*)malloc(sizeof(FileNode));
+                    tempfnode->pathName = (char*)malloc(sizeof(char) * (strlen(update_ptr->pathName) + 1));
+                    bzero(tempfnode->pathName, strlen(update_ptr->pathName) + 1);
+                    strcpy(tempfnode->pathName, update_ptr->pathName);
+                    tempfnode->contents = NULL; // don't need to send the file contents to the server
+                    tempfnode->next = NULL;
+
+                    if(fileList == NULL) // need to assign head
+                    {
+                        fileList = tempfnode;
+                    }
+                    else
+                    {
+                        FileNode* traversal = fileList;
+                        while(traversal->next != NULL)
+                        {
+                            traversal = traversal->next;
+                        }
+                        traversal->next = tempfnode;
+                    }
+                    
+                }
+                update_ptr = update_ptr->next;
+            }
+
+            // build message to request files from server from fileList
+            // numFiles:fileName_length:fileName:fileName2_length:fileName2
+
+            int total_message_length = 0;
+            FileNode* file_traversal = fileList;
+            while(file_traversal != NULL)
+            {
+                numFiles++;
+                total_message_length += numDigits(strlen(file_traversal->pathName)) + 1 + strlen(file_traversal->pathName);
+
+                if(file_traversal->next != NULL) // not the last file name in the message
+                {
+                    total_message_length++; // for the colon
+                }
+                file_traversal = file_traversal->next;
+            }
+            total_message_length += numDigits(numFiles) + 1;
+
+            char* fileRequest = (char*)malloc(sizeof(char) * (total_message_length + 1));
+            bzero(fileRequest, total_message_length + 1);
+
+            char* num_files = int_to_string(numFiles);
+            strcpy(fileRequest, num_files);
+            strcat(fileRequest, ":");
+
+            file_traversal = fileList;
+            while(file_traversal != NULL)
+            {
+                char* file_name_length = int_to_string(strlen(file_traversal->pathName));
+                strcat(fileRequest, file_name_length);
+                strcat(fileRequest, ":");
+                strcat(fileRequest, file_traversal->pathName);
+                if(file_traversal->next != NULL) // not the last file in the message so add a colon
+                {
+                    strcat(fileRequest, ":");
+                }
+                file_traversal = file_traversal->next;
+            }
+
+            free_fileLL(fileList);
+            printf("Sending server request: %s\n", fileRequest);
+            sendMessage(fileRequest, serverFD );
+            free(fileRequest);
+
+
+
         }
         
     }
