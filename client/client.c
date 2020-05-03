@@ -37,6 +37,8 @@ char* getHash(char* fileContents)
         strcat(hashedStr, resultstr);
     }
 
+    free(result);
+
     return hashedStr;
 }
 
@@ -665,12 +667,15 @@ int compareClientAndServerManifests(node* serverManifest, node* clientEntry)
                 int fd = open(clientEntry->pathName, O_RDONLY);
                 char* fileContents = readFile(fileContents, fd);
                 char* liveHash = getHash(fileContents);
+                free(fileContents);
+                close(fd);
 
                 if(strcmp(clientEntry->hash, liveHash) != 0)
                 {
                     printf("M ");
                     printf(clientEntry->pathName);
                     printf("\n");
+                    free(liveHash);
                     return 1;
                 }
                 else
@@ -694,6 +699,103 @@ int compareClientAndServerManifests(node* serverManifest, node* clientEntry)
         return 3;
 
     return 0;
+}
+
+//-1: C, 1: M, 2: D
+int updateCompareClientAndServer(node* serverManifest, node* clientEntry, int updateFD, int conflictFD)
+{
+    node* ptr = serverManifest;
+
+    while(ptr != NULL)
+    {
+        if(strcmp(ptr->pathName, clientEntry->pathName) == 0)
+        {
+            if(strcmp(ptr->versionNum, clientEntry->versionNum) != 0 && strcmp(ptr->hash, clientEntry->hash) != 0)
+            {
+                int fd = open(clientEntry->pathName, O_RDONLY);
+                char* fileContents = readFile(fileContents, fd);
+                char* liveHash = getHash(fileContents);
+                free(fileContents);
+                close(fd);
+
+                if(strcmp(clientEntry->hash, liveHash) == 0)
+                {
+                    printf("M ");
+                    printf(clientEntry->pathName);
+                    printf("\n");
+                    write(updateFD, "M\t", 2);
+                    write(updateFD, ptr->pathName, strlen(ptr->pathName));
+                    write(updateFD, "\t", 1);
+                    write(updateFD, ptr->hash, strlen(ptr->hash));
+                    write(updateFD, "\n", 1);
+                    free(liveHash);
+                    return 1;
+                }
+            }
+            else if(strcmp(ptr->hash, clientEntry->hash) != 0)
+            {
+                int fd = open(clientEntry->pathName, O_RDONLY);
+                char* fileContents = readFile(fileContents, fd);
+                char* liveHash = getHash(fileContents);
+                free(fileContents);
+                close(fd);
+
+                if(strcmp(clientEntry->hash, liveHash) != 0)
+                {
+                    printf("C ");
+                    printf(clientEntry->pathName);
+                    printf("\n");
+                    write(conflictFD, "C\t", 2);
+                    write(conflictFD, clientEntry->pathName, strlen(clientEntry->pathName));
+                    write(conflictFD, "\t", 1);
+                    write(conflictFD, liveHash, strlen(liveHash));
+                    write(conflictFD, "\n", 1);
+                    free(liveHash);
+                    return -1;
+                }
+            }
+        }
+
+        ptr = ptr->next;
+    }
+
+    printf("D ");
+    printf(clientEntry->pathName);
+    printf("\n");
+
+    write(updateFD, "D\t", 2);
+    write(updateFD, clientEntry->pathName, strlen(clientEntry->pathName));
+    write(updateFD, "\t", 1);
+    write(updateFD, clientEntry->hash, strlen(clientEntry->hash));
+    write(updateFD, "\n", 1);
+
+    return 2;
+}
+
+//1: add
+int updateCompareServerAndClient(node* clientManifest, node* serverEntry, int fd)
+{
+    node* ptr = clientManifest;
+
+    while(ptr != NULL)
+    {
+        if(strcmp(ptr->pathName, serverEntry->pathName) == 0)
+            return 0;
+        
+        ptr = ptr->next;
+    }
+
+    printf("A ");
+    printf(serverEntry->pathName);
+    printf("\n");
+
+    write(fd, "A\t", 2);
+    write(fd, serverEntry->pathName, strlen(serverEntry->pathName));
+    write(fd, "\t", 1);
+    write(fd, serverEntry->hash, strlen(serverEntry->hash));
+    write(fd, "\n", 1);
+
+    return 1;
 }
 
 char* int_to_string(int x)
@@ -753,7 +855,7 @@ int main(int argc, char* argv[])
                 char* path = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 20));
                 sprintf(path, "%s/.Manifest", argv[2]);
                 printf("%s\n", path);
-                int fd = open(path, O_RDWR | O_CREAT, 00600);
+                int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, 00600);
                 write(fd, "0\n", 2);
                 printf("Create command completed\n");
                 close(fd);
@@ -1338,6 +1440,107 @@ int main(int argc, char* argv[])
             }
             close(serverFD);
 
+        }
+
+        if(strcmp(argv[1], "update") == 0)
+        {
+            int serverFD = create_socket();
+
+            if(!isDirectoryExists(argv[2]))
+            {
+                printf("Project does not exist\n");
+                return 0;
+            }
+
+            char* message = (char*) malloc(sizeof(char) * strlen(argv[2]) + 5);
+            bzero(message, strlen(argv[2]) + 5);
+            sprintf(message, "ud:%s", argv[2]);
+            sendMessage(message, serverFD);
+            free(message);
+
+            char* serverResponse = readMessage(serverResponse, serverFD);
+            
+            if(serverResponse[0] == 'e' && serverResponse[1] == 'r' && serverResponse[2] == ':')
+            {
+                printf("Error: Project does not exist on server\n");
+                free(serverResponse);
+                return 0;
+            }
+
+            char* manifestPath = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 12));
+            bzero(manifestPath, strlen(argv[2]) + 12);
+            sprintf(manifestPath, "%s/.Manifest", argv[2]);
+            int manifestFD = open(manifestPath, O_RDONLY);
+            char* clientManifestContents = readFile(clientManifestContents, manifestFD);
+            close(manifestFD);
+            free(manifestPath);
+
+            node* serverManifest = manifest_to_LL(serverResponse);
+            node* clientManifest = manifest_to_LL(clientManifestContents);
+
+            free(clientManifestContents);
+            free(serverResponse);
+
+            if(strcmp(serverManifest->versionNum, clientManifest->versionNum) == 0)
+            {
+                printf("Up To Date\n");
+                
+                char* updatePath = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 12));
+                bzero(updatePath, strlen(argv[2]) + 12);
+                sprintf(updatePath, "%s/.Update", argv[2]);
+                int updateFD = open(updatePath, O_RDWR | O_CREAT | O_TRUNC, 00600);
+                close(updateFD);
+                free(updatePath);
+
+                char* conflictPath = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 12));
+                bzero(conflictPath, strlen(argv[2]) + 12);
+                sprintf(conflictPath, "%s/.Conflict", argv[2]);
+                remove(conflictPath);
+                free(conflictPath);
+
+                freeList(serverManifest);
+                freeList(clientManifest);
+                return 0;
+            }
+            
+            char* updatePath = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 12));
+            bzero(updatePath, strlen(argv[2]) + 12);
+            sprintf(updatePath, "%s/.Update", argv[2]);
+            int updateFD = open(updatePath, O_RDWR | O_CREAT | O_TRUNC, 00600);
+            free(updatePath);
+            
+            char* conflictPath = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 12));
+            bzero(conflictPath, strlen(argv[2]) + 12);
+            sprintf(conflictPath, "%s/.Conflict", argv[2]);
+            int conflictFD = open(conflictPath, O_RDWR | O_CREAT | O_TRUNC, 00600);
+
+            node* clientPtr = clientManifest->next;
+
+            while(clientPtr != NULL)
+            {
+                int code = updateCompareClientAndServer(serverManifest->next, clientPtr, updateFD, conflictFD);
+                clientPtr = clientPtr->next;
+            }
+
+            node* serverPtr = serverManifest->next;
+
+            while(serverPtr != NULL)
+            {
+                int code = updateCompareServerAndClient(clientManifest->next, serverPtr, updateFD);
+                serverPtr = serverPtr->next;
+            }
+
+            close(conflictFD);
+            close(updateFD);
+
+            int conflictSize = getFileSize(conflictPath);
+            if(conflictSize > 0)
+                printf("Conflicts were found, must be resolved before project is updated\n");
+            else if(conflictSize == 0)
+                remove(conflictPath);
+            free(conflictPath);
+            freeList(clientManifest);
+            freeList(serverManifest);
         }
         
     }

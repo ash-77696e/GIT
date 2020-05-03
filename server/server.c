@@ -487,7 +487,7 @@ void addToHistory(node* commitHead, char* old_manifest_version, char* projectNam
         ptr = ptr->next;
     }
     write(historyFD, "\n", 1);
-
+    close(historyFD);
 }
 
 int create(char* token, int clientfd)
@@ -980,7 +980,7 @@ int push(char* token, int clientfd)
             if(strcmp(cmt_ptr->status, "A") == 0) // add file to project directory 
             {
                 // write creates new file in project directory
-                int new_file_fd = open(cmt_ptr->pathName, O_RDWR | O_CREAT, 00600);
+                int new_file_fd = open(cmt_ptr->pathName, O_RDWR | O_CREAT, 00666);
                 char* to_write = search_in_fileLL(fileHead, cmt_ptr->pathName); 
                 printf("File to be added has contents: %s\n", to_write);
                 if(to_write == NULL)
@@ -1043,7 +1043,7 @@ int push(char* token, int clientfd)
             else if(strcmp(cmt_ptr->status, "M") == 0) // overwrite file in project directory
             {
                 // modify existing file
-                int fileFD = open(cmt_ptr->pathName, O_RDWR | O_CREAT | O_TRUNC, 00600);
+                int fileFD = open(cmt_ptr->pathName, O_RDWR | O_CREAT | O_TRUNC, 00666);
                 if(fileFD == -1)
                 {
                     printf("Sending client: er:file not found in project\n");
@@ -1121,6 +1121,7 @@ int push(char* token, int clientfd)
     strcat(finalMessage, manifestContents);
     printf("The finalMessage is: %s\n", finalMessage);
     sendMessage(finalMessage, clientfd);
+    close(manifestFD);
     //free(finalMessage);
     return 0;
     
@@ -1256,12 +1257,33 @@ int rollback(char* token, int clientfd)
 
     untar_project(projectName, projectVersion);
     sendMessage("su:Rollback successful", clientfd);
+}
 
+int update(char* token, int clientfd)
+{
+    token = &token[3];
+
+    if(!isDirectoryExists(token))
+    {
+        sendMessage("er:Project not on server", clientfd);
+        return 0;
+    }
+
+    char* manifestPath = (char*) malloc(sizeof(char) * (strlen(token) + 12));
+    bzero(manifestPath, strlen(token) + 12);
+    sprintf(manifestPath, "%s/.Manifest", token);
+    int manifestFD = open(manifestPath, O_RDONLY);
+    char* manifestContents = readFile(manifestContents, manifestFD);
+    sendMessage(manifestContents, clientfd);
+    close(manifestFD);
+    
+    free(manifestContents);
 }
 
 int socketStuff(int fd)
 { 
     char* buffer = readMessage(buffer, fd);
+    printf("%s\n", buffer);
     char* tokens = strtok(buffer, ":");
 
     if(strcmp(tokens, "cr") == 0)
@@ -1280,9 +1302,13 @@ int socketStuff(int fd)
         history(buffer, fd);
     else if(strcmp(tokens, "ro") == 0)
         rollback(buffer, fd);
+    else if(strcmp(tokens, "ud") == 0)
+        update(buffer, fd);
+
     printf("Client: %d disconnected\n", fd);
     close(fd);
 
+    free(buffer);
     return 0;
 }
 
