@@ -726,6 +726,8 @@ int updateCompareClientAndServer(node* serverManifest, node* clientEntry, int up
                     write(updateFD, "M\t", 2);
                     write(updateFD, ptr->pathName, strlen(ptr->pathName));
                     write(updateFD, "\t", 1);
+                    write(updateFD, ptr->versionNum, strlen(ptr->versionNum));
+                    write(updateFD, "\t", 1);
                     write(updateFD, ptr->hash, strlen(ptr->hash));
                     write(updateFD, "\n", 1);
                     free(liveHash);
@@ -748,6 +750,8 @@ int updateCompareClientAndServer(node* serverManifest, node* clientEntry, int up
                     write(conflictFD, "C\t", 2);
                     write(conflictFD, clientEntry->pathName, strlen(clientEntry->pathName));
                     write(conflictFD, "\t", 1);
+                    write(conflictFD, clientEntry->versionNum, strlen(clientEntry->versionNum));
+                    write(conflictFD, "\t", 1);
                     write(conflictFD, liveHash, strlen(liveHash));
                     write(conflictFD, "\n", 1);
                     free(liveHash);
@@ -765,6 +769,8 @@ int updateCompareClientAndServer(node* serverManifest, node* clientEntry, int up
 
     write(updateFD, "D\t", 2);
     write(updateFD, clientEntry->pathName, strlen(clientEntry->pathName));
+    write(updateFD, "\t", 1);
+    write(updateFD, clientEntry->versionNum, strlen(clientEntry->versionNum));
     write(updateFD, "\t", 1);
     write(updateFD, clientEntry->hash, strlen(clientEntry->hash));
     write(updateFD, "\n", 1);
@@ -791,6 +797,8 @@ int updateCompareServerAndClient(node* clientManifest, node* serverEntry, int fd
 
     write(fd, "A\t", 2);
     write(fd, serverEntry->pathName, strlen(serverEntry->pathName));
+    write(fd, "\t", 1);
+    write(fd, serverEntry->versionNum, strlen(serverEntry->versionNum));
     write(fd, "\t", 1);
     write(fd, serverEntry->hash, strlen(serverEntry->hash));
     write(fd, "\n", 1);
@@ -1361,8 +1369,8 @@ int main(int argc, char* argv[])
             if(strcmp(status, "er") == 0)
             {
                 printf("Failed to get history of %s from server\n", projectName);
+                close(serverFD);
                 return 0;
-
             }
             if(strcmp(status, "su") == 0)
             {
@@ -1449,6 +1457,7 @@ int main(int argc, char* argv[])
             if(!isDirectoryExists(argv[2]))
             {
                 printf("Project does not exist\n");
+                close(serverFD);
                 return 0;
             }
 
@@ -1489,6 +1498,7 @@ int main(int argc, char* argv[])
                 bzero(updatePath, strlen(argv[2]) + 12);
                 sprintf(updatePath, "%s/.Update", argv[2]);
                 int updateFD = open(updatePath, O_RDWR | O_CREAT | O_TRUNC, 00600);
+                write(updateFD, "0\n", 2);
                 close(updateFD);
                 free(updatePath);
 
@@ -1507,6 +1517,7 @@ int main(int argc, char* argv[])
             bzero(updatePath, strlen(argv[2]) + 12);
             sprintf(updatePath, "%s/.Update", argv[2]);
             int updateFD = open(updatePath, O_RDWR | O_CREAT | O_TRUNC, 00600);
+            write(updateFD, "0\n", 2);
             free(updatePath);
             
             char* conflictPath = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 12));
@@ -1515,18 +1526,21 @@ int main(int argc, char* argv[])
             int conflictFD = open(conflictPath, O_RDWR | O_CREAT | O_TRUNC, 00600);
 
             node* clientPtr = clientManifest->next;
+            node* serverPtr = serverManifest->next;
 
             while(clientPtr != NULL)
             {
-                int code = updateCompareClientAndServer(serverManifest->next, clientPtr, updateFD, conflictFD);
+                serverPtr = serverManifest->next;
+                int code = updateCompareClientAndServer(serverPtr, clientPtr, updateFD, conflictFD);
                 clientPtr = clientPtr->next;
             }
 
-            node* serverPtr = serverManifest->next;
+            serverPtr = serverManifest->next;
 
             while(serverPtr != NULL)
             {
-                int code = updateCompareServerAndClient(clientManifest->next, serverPtr, updateFD);
+                clientPtr = clientManifest->next;
+                int code = updateCompareServerAndClient(clientPtr, serverPtr, updateFD);
                 serverPtr = serverPtr->next;
             }
 
@@ -1541,6 +1555,58 @@ int main(int argc, char* argv[])
             free(conflictPath);
             freeList(clientManifest);
             freeList(serverManifest);
+
+            close(serverFD);
+        }
+
+        if(strcmp(argv[1], "upgrade") == 0)
+        {
+            if(!isDirectoryExists(argv[2]))
+            {
+                printf("Error: Project does not exist\n");
+                return 0;
+            }
+
+            char* conflictPath = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 12));
+            bzero(conflictPath, strlen(argv[2]) + 12);
+            sprintf(conflictPath, "%s/.Conflict", argv[2]);
+
+            int conflictFD = open(conflictPath, O_RDONLY);
+            if(conflictFD != -1)
+            {
+                close(conflictFD);
+                printf("Error: There are conflicts. Resolve them first and update again\n");
+                free(conflictPath);
+                return 0;
+            }
+            free(conflictPath);
+
+            char* updatePath = (char*) malloc(sizeof(char) * strlen(argv[2]) + 12);
+            bzero(updatePath, strlen(argv[2]) + 12);
+            sprintf(updatePath, "%s/.Update", argv[2]);
+
+            int updateFD = open(updatePath, O_RDONLY);
+            if(updateFD == -1)
+            {
+                printf("Error: Update was not called, please call it before upgrading\n");
+                free(updatePath);
+                return 0;
+            }
+
+            char* updateContents = readFile(updateContents, updateFD);
+            close(updateFD);
+
+            node* updateList = manifest_to_LL(updateContents);
+
+            if(updateList->next == NULL)
+            {
+                printf("Project is up to date\n");
+                remove(updatePath);
+                free(updatePath);
+                free(updateContents);
+                freeList(updateList);
+                return 0;
+            }
         }
         
     }
