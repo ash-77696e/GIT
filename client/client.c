@@ -680,6 +680,11 @@ int compareClientAndServerManifests(node* serverManifest, node* clientEntry)
                 }
                 else
                     return 4;
+            } 
+            else 
+            {
+                if(atoi(ptr->versionNum) > atoi(clientEntry->versionNum))
+                    return -1;
             }
 
 
@@ -967,6 +972,11 @@ int main(int argc, char* argv[])
             free(coCommand);
 
             char* serverResponse = readMessage(serverResponse, sockFD);
+            if(serverResponse[0] == 'e' && serverResponse[1] == 'r')
+            {
+                printf("Error: project does not exist on server\n");
+                return 0;
+            }
             char* tokens = strtok(serverResponse, ":");
             printf("%s\n", serverResponse);
             if(strcmp(tokens, "sf") == 0)
@@ -985,12 +995,37 @@ int main(int argc, char* argv[])
                 printf("Error: project does not exist\n");
                 return 0;
             }
+
+            char* updatePath = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 12));
+            bzero(updatePath, strlen(argv[2]) + 12);
+            sprintf(updatePath, "%s/.Update", argv[2]);
+            int updateFD = open(updatePath, O_RDONLY);
+            if(updateFD != -1)
+            {
+                char* updateContents = readFile(updateContents, updateFD);
+                node* updateNode = manifest_to_LL(updateContents);
+                close(updateFD);
+                if(updateNode->next != NULL)
+                {
+                    printf("Update file is not empty. Please upgrade\n");
+                    free(updateContents);
+                    return 0;
+                }
+            }
+
             int sockFD = create_socket();
             char* cmCommand = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 4));
             bzero(cmCommand, strlen(argv[2]) + 4);
             sprintf(cmCommand, "cm:%s", argv[2]);
             sendMessage(cmCommand, sockFD);
             char* serverResponse = readMessage(serverResponse, sockFD);
+            
+            if(serverResponse[0] == 'e' && serverResponse[1] == 'r')
+            {
+                printf("Error: project does not exist on server\n");
+                return 0;
+            }
+
             serverResponse = &serverResponse[3];
 
             char* idStr = (char*) malloc(sizeof(char));
@@ -1007,6 +1042,8 @@ int main(int argc, char* argv[])
                 idStr = tmp;
                 index++;
             }
+            index++;
+            serverResponse = &serverResponse[index];
 
             node* serverManifest = manifest_to_LL(serverResponse);
             char* clientManifestPath = (char*) malloc(sizeof(char) * strlen(argv[2]) + 20);
@@ -1028,6 +1065,18 @@ int main(int argc, char* argv[])
             int clientVersion = atoi(clientManifest->versionNum);
             int serverVersion = atoi(serverManifest->versionNum);
 
+            printf("%d\n", clientVersion);
+            printf("%d\n", serverVersion);
+
+            if(clientVersion != serverVersion)
+            {
+                sendMessage("er:", sockFD);
+                close(clientCommitFD);
+                remove(clientCommitPath);
+                printf("Error: version numbers of client and manifest do not match\n");
+                return 0;
+            }
+
             write(clientCommitFD, idStr, strlen(idStr));
             write(clientCommitFD, "\n", 1);
 
@@ -1036,6 +1085,15 @@ int main(int argc, char* argv[])
             while(ptr != NULL)
             {
                 int response = compareClientAndServerManifests(serverManifest->next, ptr);
+                printf("%d\n", response);
+                if(response == -1)
+                {
+                    close(clientCommitFD);
+                    remove(clientCommitPath);
+                    printf("Error: commit failed, must synch with repository first\n");
+                    sendMessage("er:", sockFD);
+                    return 0;
+                }
                 if(response == 0)
                 {
                     write(clientCommitFD, "A", 1);
@@ -1097,6 +1155,16 @@ int main(int argc, char* argv[])
             close(clientCommitFD);
             clientCommitFD = open(clientCommitPath, O_RDONLY);
             char* clientCommitContents = readFile(clientCommitContents, clientCommitFD);
+            node* commits = manifest_to_LL(clientCommitContents);
+            if(commits->next == NULL)
+            {
+                printf("Client up to date\n");
+                sendMessage("er:", sockFD);
+                free(clientCommitContents);
+                close(clientCommitFD);
+                remove(clientCommitPath);
+                return 0;
+            }
             close(clientCommitFD);
             sendMessage(clientCommitContents, sockFD);
         }
@@ -1715,8 +1783,9 @@ int main(int argc, char* argv[])
             sendMessage(fileRequest, serverFD );
             free(fileRequest);
 
-
-
+            char* serverResponse = readMessage(serverResponse, serverFD);
+            
+            createSentFiles(serverResponse);
         }
         
     }

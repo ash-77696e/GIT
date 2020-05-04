@@ -607,6 +607,11 @@ int currentversion(char* token, int clientfd)
 int checkout(char* token, int clientfd)
 {
     token = &token[3];
+    if(!isDirectoryExists(token))
+    {
+        sendMessage("er:", clientfd);
+        return 0;
+    }
     FileNode* root = NULL;
     createFileLL(token, &root);
     int numFiles = 0;
@@ -651,6 +656,12 @@ int checkout(char* token, int clientfd)
 int commit(char* token, int clientfd)
 {
     token = &token[3];
+    printf("%s\n", token);
+    if(!isDirectoryExists(token))
+    {
+        sendMessage("er:Project does not exist", clientfd);
+        return 0;
+    }
     char* manifestPath = (char*) malloc(sizeof(char) * (strlen(token) + 15));
     bzero(manifestPath, strlen(token)+15);
     sprintf(manifestPath, "%s/.Manifest", token);
@@ -663,6 +674,10 @@ int commit(char* token, int clientfd)
     sprintf(message, "sc:%d:%s", id, manifestContents);
     sendMessage(message, clientfd);
     char* clientResponse = readMessage(clientResponse, clientfd);
+    if(clientResponse[0] == 'e' && clientResponse[1] == 'r')
+    {
+        return 0;
+    }
     commitNodes = addCommitNode(commitNodes, token, id, clientResponse);
     printf("%s\n", commitNodes->commit);
 }
@@ -980,6 +995,7 @@ int push(char* token, int clientfd)
             if(strcmp(cmt_ptr->status, "A") == 0) // add file to project directory 
             {
                 // write creates new file in project directory
+                makePath(cmt_ptr->pathName);
                 int new_file_fd = open(cmt_ptr->pathName, O_RDWR | O_CREAT, 00666);
                 char* to_write = search_in_fileLL(fileHead, cmt_ptr->pathName); 
                 printf("File to be added has contents: %s\n", to_write);
@@ -1043,6 +1059,7 @@ int push(char* token, int clientfd)
             else if(strcmp(cmt_ptr->status, "M") == 0) // overwrite file in project directory
             {
                 // modify existing file
+                makePath(cmt_ptr->pathName);
                 int fileFD = open(cmt_ptr->pathName, O_RDWR | O_CREAT | O_TRUNC, 00666);
                 if(fileFD == -1)
                 {
@@ -1316,12 +1333,142 @@ int upgrade(char* token, int clientfd)
     {
         printf("Project could not be found on the server");
         sendMessage("er: Project could not be found on the server", clientfd);
+        free(projectPath);
         return 0;
     }
 
     sendMessage("su: Project exists on the server", clientfd);
-    
 
+    char* clientRequest = readMessage(clientRequest, clientfd);
+    
+    strIndex = 0;
+    char* numFiles = (char*) malloc(sizeof(char));
+    numFiles[strIndex] = '\0';
+
+    while(clientRequest[strIndex] != ':')
+    {
+        numFiles[strIndex] = clientRequest[strIndex];
+        char* tmp = (char*) realloc(numFiles, strIndex+2);
+        numFiles = tmp;
+        strIndex++;
+    }
+
+    int files = atoi(numFiles);
+    free(numFiles);
+
+    int i = 0;
+    strIndex++;
+    FileNode* fileRoot = NULL;
+
+    for(i = 0; i < files; i++)
+    {
+        int pathIndex = 0;
+        char* filePathLenStr = (char*) malloc(sizeof(char));
+        filePathLenStr[0] = '\0';
+
+        while(clientRequest[strIndex] != ':')
+        {
+            filePathLenStr[pathIndex] = clientRequest[strIndex];
+            char* tmp = (char*) realloc(filePathLenStr, pathIndex+2);
+            filePathLenStr = tmp;
+            strIndex++;
+            pathIndex++;
+        }
+
+        int filePathLen = atoi(filePathLenStr);
+        free(filePathLenStr);
+        strIndex++;
+
+        int j = 0;
+        char* filePath = (char*) malloc(sizeof(char) * (filePathLen + 1));
+        bzero(filePath, filePathLen+1);
+
+        for(j = 0; j < filePathLen; j++)
+        {
+            filePath[j] = clientRequest[strIndex];
+            strIndex++;
+        }
+
+        int fd = open(filePath, O_RDONLY);
+        char* fileContents = readFile(fileContents, fd);
+        int fileSize = getFileSize(filePath);
+        close(fd);
+
+        if(fileRoot == NULL)
+        {
+            fileRoot = (FileNode*) malloc(sizeof(FileNode));
+            fileRoot->pathName = filePath;
+            fileRoot->contents = fileContents;
+            fileRoot->size = fileSize;
+            fileRoot->next = NULL;
+        }
+        else
+        {
+            FileNode* tmpFile = (FileNode*) malloc(sizeof(FileNode));
+            tmpFile->pathName = filePath;
+            tmpFile->contents = fileContents;
+            tmpFile->size = fileSize;
+            tmpFile->next = fileRoot;
+            fileRoot = tmpFile;
+        }
+
+    }
+
+    char* manifestPath = (char*) malloc(sizeof(char) * (strlen(projectName) + 12));
+    bzero(manifestPath, strlen(projectName) + 12);
+    sprintf(manifestPath, "%s/.Manifest", projectName);
+
+    int manifestFD = open(manifestPath, O_RDONLY);
+    char* manifestContents = readFile(manifestContents, manifestFD);
+    close(manifestFD);
+    FileNode* tmpFile = (FileNode*) malloc(sizeof(FileNode));
+    tmpFile->pathName = manifestPath;
+    tmpFile->contents = manifestContents;
+    tmpFile->size = strlen(manifestContents);
+    tmpFile->next = fileRoot;
+    fileRoot = tmpFile;
+    
+    files++;
+    int msgLen = 0;
+    msgLen += numDigits(files) + 1;
+    FileNode* ptr = fileRoot;
+
+    while(ptr != NULL)
+    {
+        int pathLen = strlen(ptr->pathName);
+        msgLen += numDigits(pathLen) + 1 + pathLen + 1;
+        int dataLen = strlen(ptr->contents);
+        msgLen += numDigits(dataLen) + 1 + dataLen + 1;
+        ptr = ptr->next;
+    }
+
+    char* message = (char*) malloc(sizeof(char) * (msgLen) + 3);
+    bzero(message, msgLen + 3);
+    ptr = fileRoot;
+
+    strcat(message, int_to_string(files));
+    strcat(message, ":");
+
+    while(ptr != NULL)
+    {
+        int pathLen = strlen(ptr->pathName);
+        strcat(message, int_to_string(pathLen));
+        strcat(message, ":");
+        strcat(message, ptr->pathName);
+        strcat(message, ":");
+        int dataLen = strlen(ptr->contents);
+        strcat(message, int_to_string(dataLen));
+        strcat(message, ":");
+        strcat(message, ptr->contents);
+        strcat(message, ":");
+        ptr = ptr->next;
+    }
+
+    sendMessage(message, clientfd);
+
+    free(message);
+    free(clientRequest);
+    free(projectPath);
 }
 
 int socketStuff(int fd)
@@ -1348,6 +1495,8 @@ int socketStuff(int fd)
         rollback(buffer, fd);
     else if(strcmp(tokens, "ud") == 0)
         update(buffer, fd);
+    else if(strcmp(tokens, "ug") == 0)
+        upgrade(buffer, fd);
 
     printf("Client: %d disconnected\n", fd);
     close(fd);
