@@ -380,6 +380,41 @@ char* search_in_fileLL(FileNode* fileHead, char* pathName)
     return NULL; // if no match is found
 }
 
+CommitNode* expirePendingCommits(CommitNode* head, char* projectName) // returns new head of pending commit list
+{
+    int deleteHead = 0; // if head should be deleted then delete the head after everything else
+    if(head == NULL)
+    {
+        return NULL;
+    }
+    if(strcmp(head->projName, projectName) == 0)
+    {
+        deleteHead = 1;
+    }
+    CommitNode* ptr = head;
+    while(ptr->next != NULL)
+    {
+        if(strcmp(ptr->next->projName, projectName) == 0) // delete node
+        {
+            CommitNode* temp = ptr->next;
+            ptr->next = ptr->next->next;
+            free(temp);
+        }
+        else
+        {
+            ptr = ptr->next;
+        }   
+    }
+
+    if(deleteHead == 1)
+    {
+        CommitNode* temp = head;
+        head = head->next;
+        free(temp);
+    }
+    return head;
+}
+
 void untar_project(char* projectName, char* versionNum)
 {
     // move tar to current working directory
@@ -488,6 +523,52 @@ void addToHistory(node* commitHead, char* old_manifest_version, char* projectNam
     }
     write(historyFD, "\n", 1);
     close(historyFD);
+}
+
+char* getManifestPath(char* projectName)
+{
+    char* result = malloc(sizeof(char) * ( strlen(projectName) + 11));
+    bzero(result, strlen(projectName) + 11);
+    memcpy(result, projectName, strlen(projectName));
+    strcat(result, "/");
+    strcat(result, ".Manifest");
+    return result;
+}
+
+int canRollback(char* projectName, char* projectVersion)
+{
+    int manifestFD = open(getManifestPath(projectName), O_RDONLY);
+
+    if(manifestFD == -1)
+    {
+        return 0;
+    }
+
+    char* manifestStream = readFile(manifestStream, manifestFD);
+    node* manifestHead = manifest_to_LL(manifestStream);
+    int manifest_version = atoi(manifestHead->versionNum);
+    int rollback_version = atoi(projectVersion);
+
+    free(manifestStream);
+    freeList(manifestHead);
+    close(manifestFD);
+    if(rollback_version >= manifest_version)
+    {
+        return 0;
+    }
+    else
+    {
+        return 1;
+    }
+    
+}
+
+void deleteBackups(char* projectName)
+{
+    char* cmd = (char*)malloc(sizeof(char) * (strlen(projectName) + 15));
+    bzero(cmd, strlen(projectName) + 15);
+    sprintf(cmd, "rm -r %s/backups", projectName);
+    system(cmd);
 }
 
 int create(char* token, int clientfd)
@@ -922,7 +1003,7 @@ int push(char* token, int clientfd)
     // make .Commit to LL
     node* commitHead = manifest_to_LL(clientCommit); // commitHead versionNum = clientid
 
-    // expire pending commits (NEED TO FIX)
+    // expire pending commits
     /*
     commitPtr = commitNodes;
     while(commitPtr != NULL)
@@ -933,9 +1014,8 @@ int push(char* token, int clientfd)
     }
     */
 
+    commitNodes = expirePendingCommits(commitNodes, projectName);
 
-    
-    
     // tar up project in the same project folder in a subdirectory called backups
     char* old_manifest_version = (char*)malloc(sizeof(char) * (strlen(manifestHead->versionNum) + 1));
     bzero(old_manifest_version, strlen(manifestHead->versionNum) + 1);
@@ -1197,7 +1277,7 @@ int history(char* token, int clientfd)
     strcat(finalMessage, history_length);
     strcat(finalMessage, ":");
     strcat(finalMessage, historyContents);
-
+    close(historyFD);
     printf("Sending client: %s\n", finalMessage);
     sendMessage(finalMessage, clientfd);
     
@@ -1272,8 +1352,21 @@ int rollback(char* token, int clientfd)
     printf("Project name is: %s\n", projectName);
     printf("Project version is: %s\n", projectVersion);
 
-    untar_project(projectName, projectVersion);
-    sendMessage("su:Rollback successful", clientfd);
+    if(canRollback(projectName, projectVersion) == 0)
+    {
+        printf("Can not rollback to version %s\n", projectVersion);
+        sendMessage("er: Can not rollback to version greater than or equal to current project version on the server", clientfd);
+    }
+    else
+    {
+        untar_project(projectName, projectVersion);
+        if(atoi(projectVersion) == 0) // delete backups folder
+        {
+            deleteBackups(projectName);
+        }
+        sendMessage("su:Rollback successful", clientfd);
+    }
+    
 }
 
 int update(char* token, int clientfd)

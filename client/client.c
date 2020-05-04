@@ -1224,12 +1224,14 @@ int main(int argc, char* argv[])
             {
                 printf("Error: Project did not exist on server\n");
                 removeCommit(commitPath);
+                close(serverFD);
                 return 0;    
             }
             if(strcmp(serverResponse, "er:no match for .Commit was found") == 0) // project was not on server
             {
                 printf("Error: No match for client's .Commit was found on the server\n");
                 removeCommit(commitPath);
+                close(serverFD);
                 return 0;    
             }
             if(strcmp(serverResponse, "su:match for .Commit was found") == 0)
@@ -1307,8 +1309,21 @@ int main(int argc, char* argv[])
             
             int numFiles = 0;
             FileNode* fptr = fileHead;
-            char* fileMessage = (char*)malloc(sizeof(char) * 1000); // fix later to malloc #bytes based on file size
-            bzero(fileMessage, 1000);
+
+            int file_message_length = 0;
+            while(fptr != NULL)
+            {
+                numFiles++;
+                file_message_length += numDigits(strlen(fptr->pathName)) + 1 + strlen(fptr->pathName) + 1 + numDigits(strlen(fptr->contents)) + 1 + strlen(fptr->contents);
+                if(fptr->next != NULL) // not the last file in the list
+                {
+                    file_message_length++;
+                }
+                fptr = fptr->next;
+            }
+            file_message_length += numDigits(numFiles) + 1; // accounts for numFiles:
+            char* fileMessage = (char*)malloc(sizeof(char) * (file_message_length + 1)); // fix later to malloc #bytes based on file size
+            bzero(fileMessage, file_message_length + 1);
 
             fptr = fileHead;
             while(fptr != NULL)
@@ -1329,7 +1344,7 @@ int main(int argc, char* argv[])
                     strcat(fileMessage, ":");
                 }
                 fptr = fptr->next; 
-                numFiles++;      
+                    
             }
 
             char* num_of_files = int_to_string(numFiles);
@@ -1342,7 +1357,7 @@ int main(int argc, char* argv[])
             sendMessage(secondMessage, serverFD);
             freeList(commitHead);
             free(fileMessage);
-            
+            free(secondMessage);
             char* finalResponse = readMessage(finalResponse, serverFD);
             printf("The finalResponse is: %s\n", finalResponse);
             
@@ -1401,6 +1416,7 @@ int main(int argc, char* argv[])
 
                 removeCommit(commitPath);
                 close(serverFD);
+                close(manifestFD);
                 printf("Successful push\n");
             }
             
@@ -1466,6 +1482,7 @@ int main(int argc, char* argv[])
                 }
                 historyContents[strIndex] = '\0';
                 printf("History of %s:\n%s", projectName, historyContents);
+                close(serverFD);
             }
         }
         if(strcmp(argv[1], "rollback") == 0)
