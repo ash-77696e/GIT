@@ -11,8 +11,8 @@
 #include <string.h>
 #include <openssl/md5.h>
 #include <errno.h>
-#include "../structs.h"
-#include "../IO.h"
+#include "structs.h"
+#include "IO.h"
 
 void error(char *msg)
 {
@@ -321,8 +321,20 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
         while(ptr != NULL){
             if(strcmp(ptr->pathName, filePath(projectName, fileName)) == 0) // match
             {
+                //printf("%s\n", ptr->status);
+                if(strcmp(ptr->status, "R") == 0)
+                {
+                    strcpy(ptr->status, "A");
+                    int fd = open(ptr->pathName, O_RDONLY);
+                    char* contents = readFile(contents, fd);
+                    close(fd);
+                    char* hash = getHash(contents);
+                    strcpy(ptr->hash, hash);
+                    modify = 0;
+                    break;
+                }
                 strcpy(ptr->status, "M"); // modify
-                printf("File already in manifest\n");
+                //printf("File already in manifest\n");
                 modify = 1; // did not add
                 break; 
             }
@@ -340,7 +352,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
             int fd2 = open(filePath(projectName, fileName), O_RDONLY);
             if(fd2 == -1)
             {
-                printf("File does not exist\n");
+                //printf("File does not exist\n");
                 return 0;
             }
             char* fileContents = NULL;
@@ -398,7 +410,7 @@ int Remove(char* projectName, char* fileName)
 
         if(fd == -1)
         {
-            printf("Manifest does not exist\n");
+            //printf("Manifest does not exist\n");
             return 0;
         }
 
@@ -416,6 +428,7 @@ int Remove(char* projectName, char* fileName)
             if(strcmp(ptr->pathName, filePath(projectName, fileName)) == 0)
             {
                 strcpy(ptr->status, "R");
+                strcpy(ptr->versionNum, "0");
                 removed = 1;
                 break;
             }
@@ -434,7 +447,7 @@ int Remove(char* projectName, char* fileName)
         close(fd);
         if(removed == 0) // no match found
         { 
-            printf("File not found in manifest\n");
+            //printf("File not found in manifest\n");
             return 0;
         }
         return 1;
@@ -489,7 +502,7 @@ char* readMessage(char* buffer, int fd)
     char* msg = (char*) malloc(sizeof(char) * size+1);
     bzero(msg, size+1);
     read(fd, msg, size);
-    printf("Message read is: %s\n", msg);
+    //printf("Message read is: %s\n", msg);
     return msg;
 }
 
@@ -628,7 +641,7 @@ void createSentFiles(char* buffer)
         free(dataSizeStr);
         char* data = (char*) malloc(sizeof(char) * (dataSize + 1));
         bzero(data, dataSize+1);
-        printf("%d\n", dataSize);
+        //printf("%d\n", dataSize);
         for(i = 0; i < dataSize; i++)
         {
             data[i] = buffer[bufferIndex];
@@ -763,6 +776,8 @@ int updateCompareClientAndServer(node* serverManifest, node* clientEntry, int up
                     return -1;
                 }
             }
+
+            return 3;
         }
 
         ptr = ptr->next;
@@ -849,6 +864,7 @@ int main(int argc, char* argv[])
         if(strcmp(argv[1], "configure") == 0)
         {
             set_configure(argv[2], argv[3]);
+            printf("Configure complete\n");
         }
 
         if(strcmp(argv[1], "create") == 0)
@@ -867,7 +883,7 @@ int main(int argc, char* argv[])
                 mkdir(argv[2], 00777);
                 char* path = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 20));
                 sprintf(path, "%s/.Manifest", argv[2]);
-                printf("%s\n", path);
+                //printf("%s\n", path);
                 int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, 00600);
                 write(fd, "0\n", 2);
                 printf("Create command completed\n");
@@ -915,10 +931,10 @@ int main(int argc, char* argv[])
             int success = add(argv[2], argv[3]);
             if(success == 1)
             {
-                printf("add successful\n");
+                printf("Add command successful\n");
             }
             else{
-                printf("add failed\n");
+                printf("Add command failed\n");
             }
         }
 
@@ -927,10 +943,10 @@ int main(int argc, char* argv[])
             int success = Remove(argv[2], argv[3]);
             if(success == 1)
             {
-                printf("remove successful\n");
+                printf("Remove command successful\n");
             }
             else{
-                printf("remove failed\n");
+                printf("Remove command failed\n");
             }
         }
 
@@ -978,7 +994,7 @@ int main(int argc, char* argv[])
                 return 0;
             }
             char* tokens = strtok(serverResponse, ":");
-            printf("%s\n", serverResponse);
+            //printf("%s\n", serverResponse);
             if(strcmp(tokens, "sf") == 0)
             {
                 printf("Checkout successful\n");
@@ -1023,6 +1039,7 @@ int main(int argc, char* argv[])
             if(serverResponse[0] == 'e' && serverResponse[1] == 'r')
             {
                 printf("Error: project does not exist on server\n");
+                close(sockFD);
                 return 0;
             }
 
@@ -1065,14 +1082,15 @@ int main(int argc, char* argv[])
             int clientVersion = atoi(clientManifest->versionNum);
             int serverVersion = atoi(serverManifest->versionNum);
 
-            printf("%d\n", clientVersion);
-            printf("%d\n", serverVersion);
+            //printf("%d\n", clientVersion);
+            //printf("%d\n", serverVersion);
 
             if(clientVersion != serverVersion)
             {
                 sendMessage("er:", sockFD);
                 close(clientCommitFD);
                 remove(clientCommitPath);
+                close(sockFD);
                 printf("Error: version numbers of client and manifest do not match\n");
                 return 0;
             }
@@ -1085,13 +1103,14 @@ int main(int argc, char* argv[])
             while(ptr != NULL)
             {
                 int response = compareClientAndServerManifests(serverManifest->next, ptr);
-                printf("%d\n", response);
+                //printf("%d\n", response);
                 if(response == -1)
                 {
                     close(clientCommitFD);
                     remove(clientCommitPath);
                     printf("Error: commit failed, must synch with repository first\n");
                     sendMessage("er:", sockFD);
+                    close(sockFD);
                     return 0;
                 }
                 if(response == 0)
@@ -1163,10 +1182,13 @@ int main(int argc, char* argv[])
                 free(clientCommitContents);
                 close(clientCommitFD);
                 remove(clientCommitPath);
+                close(sockFD);
                 return 0;
             }
             close(clientCommitFD);
             sendMessage(clientCommitContents, sockFD);
+            close(sockFD);
+            printf("Commit successful\n");
         }
         if(strcmp(argv[1], "push") == 0 )
         {
@@ -1209,7 +1231,7 @@ int main(int argc, char* argv[])
             strcat(message, ":");
             strcat(message, commitContents);
 
-            printf("Sending server:\n%s", message);
+            //printf("Sending server:\n%s", message);
             
             
             // open socket
@@ -1218,7 +1240,7 @@ int main(int argc, char* argv[])
             
             
             char* serverResponse = readMessage(serverResponse, serverFD);
-            printf("Server response is: %s\n", serverResponse);
+            //printf("Server response is: %s\n", serverResponse);
             
             if(strcmp(serverResponse, "er:project does not exist on the server") == 0) // project was not on server
             {
@@ -1234,10 +1256,10 @@ int main(int argc, char* argv[])
                 close(serverFD);
                 return 0;    
             }
-            if(strcmp(serverResponse, "su:match for .Commit was found") == 0)
+            /*if(strcmp(serverResponse, "su:match for .Commit was found") == 0)
             {
                 printf("Success: Match for client's .Commit found on server\n");
-            }
+            }*/
 
             
             node* commitHead = NULL;
@@ -1271,7 +1293,7 @@ int main(int argc, char* argv[])
                         return 0;
                     }
                     char* fileContents = readFile(fileContents, fd);
-                    printf("Contents of %s is %s\n", ptr->pathName, fileContents);
+                    //printf("Contents of %s is %s\n", ptr->pathName, fileContents);
                     close(fd);
 
                     FileNode* tempfnode = malloc(sizeof(FileNode));
@@ -1351,7 +1373,7 @@ int main(int argc, char* argv[])
             char* secondMessage = (char*)malloc(sizeof(char) * (strlen(num_of_files) + strlen(fileMessage) + 2));
             bzero(secondMessage, strlen(num_of_files) + strlen(fileMessage) + 2);
             sprintf(secondMessage, "%s:%s", num_of_files, fileMessage);
-            printf("Message to be sent to server is: %s\n", secondMessage);
+            //printf("Message to be sent to server is: %s\n", secondMessage);
 
             free_fileLL(fileHead);
             sendMessage(secondMessage, serverFD);
@@ -1359,7 +1381,7 @@ int main(int argc, char* argv[])
             free(fileMessage);
             free(secondMessage);
             char* finalResponse = readMessage(finalResponse, serverFD);
-            printf("The finalResponse is: %s\n", finalResponse);
+            //printf("The finalResponse is: %s\n", finalResponse);
             
             int i = 0;
             char* push_result = (char*)malloc(sizeof(char) * 3);
@@ -1371,7 +1393,7 @@ int main(int argc, char* argv[])
                 i++;
             }
             push_result[i] = '\0';
-            printf("push_result is: %s\n", push_result);
+            //printf("push_result is: %s\n", push_result);
             i++; // skip : after er: or su:
             if(strcmp(push_result, "er") == 0)
             {
@@ -1507,12 +1529,12 @@ int main(int argc, char* argv[])
             strcat(message, ":");
             strcat(message, projectVersion);
 
-            printf("Sending server request to rollback\n");
-            printf("Message to be sent to server is %s\n", message);
+            //printf("Sending server request to rollback\n");
+            //printf("Message to be sent to server is %s\n", message);
 
             sendMessage(message, serverFD);
             char* responseStatus = readMessage(responseStatus, serverFD);
-            printf("Server sent: %s\n", responseStatus);
+            //printf("Server sent: %s\n", responseStatus);
             int index = 0;
             char* status = (char*)malloc(sizeof(char) * 3);
             bzero(status, 3);
@@ -1537,14 +1559,13 @@ int main(int argc, char* argv[])
 
         if(strcmp(argv[1], "update") == 0)
         {
-            int serverFD = create_socket();
-
             if(!isDirectoryExists(argv[2]))
             {
                 printf("Project does not exist\n");
-                close(serverFD);
                 return 0;
             }
+
+            int serverFD = create_socket();
 
             char* message = (char*) malloc(sizeof(char) * strlen(argv[2]) + 5);
             bzero(message, strlen(argv[2]) + 5);
@@ -1595,6 +1616,7 @@ int main(int argc, char* argv[])
 
                 freeList(serverManifest);
                 freeList(clientManifest);
+                close(serverFD);
                 return 0;
             }
             
@@ -1634,13 +1656,19 @@ int main(int argc, char* argv[])
 
             int conflictSize = getFileSize(conflictPath);
             if(conflictSize > 0)
+            {
                 printf("Conflicts were found, must be resolved before project is updated\n");
+                freeList(clientManifest);
+                freeList(serverManifest);
+                close(serverFD);
+                return 0;
+            }
             else if(conflictSize == 0)
                 remove(conflictPath);
             free(conflictPath);
             freeList(clientManifest);
             freeList(serverManifest);
-
+            printf("Update successful\n");
             close(serverFD);
         }
 
@@ -1713,6 +1741,7 @@ int main(int argc, char* argv[])
             {
                 printf("Server sent: %s\n", projectExists);
                 free(projectExists);
+                close(serverFD);
                 return 0;
             }
             if(projectExists[0] == 's' && projectExists[0] == 'u' && projectExists[0] == ':')
@@ -1803,6 +1832,9 @@ int main(int argc, char* argv[])
             char* serverResponse = readMessage(serverResponse, serverFD);
             
             createSentFiles(serverResponse);
+            remove(updatePath);
+            printf("Upgrade successful\n");
+            close(serverFD);
         }
         
     }

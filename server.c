@@ -9,12 +9,22 @@
 #include <dirent.h>
 #include <netdb.h> 
 #include <string.h>
-#include "../structs.h"
-#include "../IO.h"
+#include <pthread.h>
+#include "structs.h"
+#include "IO.h"
 #include <openssl/md5.h>
 
 int clientIds;
 CommitNode* commitNodes;
+
+typedef struct thread_node
+{
+    pthread_t thread_id;
+    struct thread_node* next;
+} thread_node;
+
+thread_node* threadFront = NULL;
+pthread_mutex_t thread_lock;
 
 void error(char *msg)
 {
@@ -266,7 +276,7 @@ int sendMessage(char* cmd, int sockFD)
     bzero(msg, size + numDigits(size) + 2);
     sprintf(msg, "%d:", size);
     strcat(msg, cmd);
-    printf("Message being sent is: %s\n", msg);
+    //printf("Message being sent is: %s\n", msg);
     write(sockFD, msg, strlen(msg));
 }
 
@@ -286,7 +296,7 @@ void makePath(char* filePath)
     char* command = (char*) malloc(sizeof(char) * (strlen(dirPath) + 10));
     bzero(command, strlen(dirPath) + 10);
     sprintf(command, "mkdir -p %s", dirPath);
-    printf("makePath command is: %s\n", command);
+    //printf("makePath command is: %s\n", command);
     system(command);
 }
 
@@ -427,28 +437,28 @@ void untar_project(char* projectName, char* versionNum)
     strcat(tar_path, versionNum);
     strcat(tar_path, ".tar");
     sprintf(mv_cmd, "mv %s ./", tar_path);
-    printf("mv_cmd is : %s\n", mv_cmd);
+    //printf("mv_cmd is : %s\n", mv_cmd);
     system(mv_cmd);
 
     // remove project directory
     char* rm_cmd = (char*)malloc(sizeof(char) * (strlen(projectName) + 7));
     bzero(rm_cmd, strlen(projectName) + 7);
     sprintf(rm_cmd, "rm -r %s", projectName);
-    printf("rm_cmd is : %s\n", rm_cmd);
+    //printf("rm_cmd is : %s\n", rm_cmd);
     system(rm_cmd);
 
     //untar into current working directory
     char* untar_cmd = (char*)malloc(sizeof(char) * (strlen(versionNum) + 14));
     bzero(untar_cmd, strlen(versionNum) + 14);
     sprintf(untar_cmd, "tar -xvf %s.tar", versionNum);
-    printf("untar_cmd is: %s\n", untar_cmd);
+    //printf("untar_cmd is: %s\n", untar_cmd);
     system(untar_cmd);
 
     // remove tar in current working directory
     char* rm_tar = (char*)malloc(sizeof(char) * (strlen(versionNum) + 11) );
     bzero(rm_tar, strlen(versionNum) + 11);
     sprintf(rm_tar, "rm -r %s.tar", versionNum);
-    printf("rm_tar is: %s\n", rm_tar);
+    //printf("rm_tar is: %s\n", rm_tar);
     system(rm_tar);
 
 }
@@ -582,7 +592,7 @@ int create(char* token, int clientfd)
     char* manifestPath = (char*) malloc(sizeof(char) * (strlen(token) + 12));
     bzero(manifestPath, strlen(token)+12);
     sprintf(manifestPath, "%s/.Manifest", token);
-    printf("%s\n", manifestPath);
+    //printf("%s\n", manifestPath);
     int fd = open(manifestPath, O_RDWR | O_CREAT | O_TRUNC, 00600);
     write(fd, "0\n", 2);
     close(fd);
@@ -668,7 +678,7 @@ int currentversion(char* token, int clientfd)
             len += vLen;
             free(buffer);
             buffer = tmp;
-            printf("%s\n", ptr->versionNum);
+            //printf("%s\n", ptr->versionNum);
             strcat(buffer, ptr->versionNum);
             strcat(buffer, "\n");
         }
@@ -729,7 +739,7 @@ int checkout(char* token, int clientfd)
         ptr = ptr->next;
     }
     
-    printf("%s\n", response);
+    //printf("%s\n", response);
     sendMessage(response, clientfd);
     free(response);
 }
@@ -737,7 +747,7 @@ int checkout(char* token, int clientfd)
 int commit(char* token, int clientfd)
 {
     token = &token[3];
-    printf("%s\n", token);
+    //printf("%s\n", token);
     if(!isDirectoryExists(token))
     {
         sendMessage("er:Project does not exist", clientfd);
@@ -760,12 +770,12 @@ int commit(char* token, int clientfd)
         return 0;
     }
     commitNodes = addCommitNode(commitNodes, token, id, clientResponse);
-    printf("%s\n", commitNodes->commit);
+    //printf("%s\n", commitNodes->commit);
 }
 
 int push(char* token, int clientfd)
 {
-    printf("Client sent: %s\n", &token[3]);
+    //printf("Client sent: %s\n", &token[3]);
     token = &token[3];
     int index = 0;
     char* project_name_length = (char*)malloc(sizeof(char) * 1000);
@@ -788,7 +798,7 @@ int push(char* token, int clientfd)
         index++;
     }
     projectName[i] = '\0';
-    printf("project name is %s\n", projectName);
+    //printf("project name is %s\n", projectName);
     
     //check if project exists on server
     char* projectPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 2));
@@ -798,7 +808,7 @@ int push(char* token, int clientfd)
 
     if(!isDirectoryExists(projectPath))
     {
-        printf("Sending client: er:project does not exist on the server\n");
+        //printf("Sending client: er:project does not exist on the server\n");
         sendMessage("er:project does not exist on the server", clientfd);
         return 0; 
     }
@@ -827,7 +837,7 @@ int push(char* token, int clientfd)
         index++;
     }
 
-    printf("Client sent the commit: %s\n", clientCommit);
+    //printf("Client sent the commit: %s\n", clientCommit);
     
     // check hash of client commit
     char* client_commit_hash = getHash(clientCommit);
@@ -840,7 +850,7 @@ int push(char* token, int clientfd)
         char* server_commit_hash = getHash(commitPtr->commit); 
         if(strcmp(client_commit_hash, server_commit_hash) == 0)
         {
-            printf("Matching .Commit found\n");
+            //printf("Matching .Commit found\n");
             break; // match found
         }
         commitPtr = commitPtr->next;
@@ -848,13 +858,13 @@ int push(char* token, int clientfd)
 
     if(commitPtr == NULL) // list of .Commits on the server side is empty or there is no match with the .Commit the client just sent
     {
-        printf("Sending client: er:no match for .Commit was found\n");
+        //printf("Sending client: er:no match for .Commit was found\n");
         sendMessage("er:no match for .Commit was found", clientfd);   // error
         return 0; 
     }
     else 
     {
-        printf("Sending client: su:match for .Commit was found\n");
+        //printf("Sending client: su:match for .Commit was found\n");
         sendMessage("su:match for .Commit was found", clientfd);   // success
     }
     
@@ -864,7 +874,7 @@ int push(char* token, int clientfd)
     bzero(token, strlen(received_files) + 1);
     strcpy(token, received_files);
     free(received_files);
-    printf("Message from client is %s\n", token);
+    //printf("Message from client is %s\n", token);
 
     
     index = 0;
@@ -879,7 +889,7 @@ int push(char* token, int clientfd)
     }
     num_of_files[index] = '\0';
     int numFiles = atoi(num_of_files);
-    printf("Number of files client sent is: %d\n", numFiles);
+    //printf("Number of files client sent is: %d\n", numFiles);
     
     i = 0;
     int strIndex;
@@ -988,7 +998,7 @@ int push(char* token, int clientfd)
     int manifestFD = open(manifestPath, O_RDONLY);
     if(manifestFD == -1 )
     {
-        printf("Sending client: er: No manifest found, push failed");
+        //printf("Sending client: er: No manifest found, push failed");
         sendMessage("er: No manifest found, push failed", clientfd);
         return 0;
     }
@@ -997,7 +1007,7 @@ int push(char* token, int clientfd)
     node* manifestHead = manifest_to_LL(manifestContents);
     close(manifestFD);
 
-    printf("Manifest contents are: %s\n", manifestContents);
+    //printf("Manifest contents are: %s\n", manifestContents);
 
     
     // make .Commit to LL
@@ -1020,7 +1030,7 @@ int push(char* token, int clientfd)
     char* old_manifest_version = (char*)malloc(sizeof(char) * (strlen(manifestHead->versionNum) + 1));
     bzero(old_manifest_version, strlen(manifestHead->versionNum) + 1);
     strcpy(old_manifest_version, manifestHead->versionNum);
-    printf("Old manifest version is: %s\n", old_manifest_version);
+    //printf("Old manifest version is: %s\n", old_manifest_version);
     char* backupPath = (char*)malloc(sizeof(char) * ( strlen(projectName) + 10 ) );
     bzero(backupPath, strlen(projectName) + 10);
     strcpy(backupPath, projectName);
@@ -1038,7 +1048,7 @@ int push(char* token, int clientfd)
     }
     */
    
-    printf("Backup path is: %s\n" , backupPath);
+    //printf("Backup path is: %s\n" , backupPath);
     makePath(backupPath);
     
     char* tar_path_1 = (char*)malloc(sizeof(char) * (strlen(projectName) + 16 + strlen(manifestHead->versionNum)));
@@ -1057,7 +1067,7 @@ int push(char* token, int clientfd)
     char* cmd = (char*)malloc(sizeof(char) * (strlen(tar_path_1) + strlen(tar_path_2) + 11));
     bzero(cmd, strlen(tar_path_1) + strlen(tar_path_2) + 11);
     sprintf(cmd, "tar -cvf %s %s", tar_path_1, tar_path_2);
-    printf("Tar command is: %s\n", cmd);
+    //printf("Tar command is: %s\n", cmd);
     
     system(cmd);
     
@@ -1078,11 +1088,11 @@ int push(char* token, int clientfd)
                 makePath(cmt_ptr->pathName);
                 int new_file_fd = open(cmt_ptr->pathName, O_RDWR | O_CREAT, 00666);
                 char* to_write = search_in_fileLL(fileHead, cmt_ptr->pathName); 
-                printf("File to be added has contents: %s\n", to_write);
+                //printf("File to be added has contents: %s\n", to_write);
                 if(to_write == NULL)
                 {
                     
-                    printf("Sending client: er:file not found in linked list\n");
+                    //printf("Sending client: er:file not found in linked list\n");
                     untar_project(projectName, old_manifest_version);
                     sendMessage("er:file not found in linked list", clientfd);
                     return 0;
@@ -1105,11 +1115,11 @@ int push(char* token, int clientfd)
                     manPtr = manPtr->next;
                 }
                 manPtr->next = add_to_man;
-                printf("Added entry to manifest\n");
+                //printf("Added entry to manifest\n");
                 node* printing = manifestHead;
                 while(printing != NULL)
                 {
-                    printf("Manifest has: %s\n", printing->pathName);
+                    //printf("Manifest has: %s\n", printing->pathName);
                     printing = printing->next;
                 }
 
@@ -1126,12 +1136,12 @@ int push(char* token, int clientfd)
 
                 // remove node from manifest
                 manifestHead = remove_from_manLL(manifestHead, cmt_ptr->pathName);
-                printf("Removed entry from manifest\n");
+                //printf("Removed entry from manifest\n");
 
                 node* printing = manifestHead;
                 while(printing != NULL)
                 {
-                    printf("Manifest has: %s\n", printing->pathName);
+                    //printf("Manifest has: %s\n", printing->pathName);
                     printing = printing->next;
                 }
             }
@@ -1143,7 +1153,7 @@ int push(char* token, int clientfd)
                 int fileFD = open(cmt_ptr->pathName, O_RDWR | O_CREAT | O_TRUNC, 00666);
                 if(fileFD == -1)
                 {
-                    printf("Sending client: er:file not found in project\n");
+                    //printf("Sending client: er:file not found in project\n");
                     untar_project(projectName, old_manifest_version);
                     sendMessage("er:file not found in project", clientfd);
                     return 0;
@@ -1151,7 +1161,7 @@ int push(char* token, int clientfd)
                 char* to_write = search_in_fileLL(fileHead, cmt_ptr->pathName); 
                 if(to_write == NULL)
                 {
-                    printf("Sending client: er:file not found in linked list\n");
+                    //printf("Sending client: er:file not found in linked list\n");
                     untar_project(projectName, old_manifest_version);
                     sendMessage("er:file not found in linked list", clientfd);
                     return 0;
@@ -1169,7 +1179,7 @@ int push(char* token, int clientfd)
         
     }
     
-    printf("Updating manifest now\n");
+    //printf("Updating manifest now\n");
     // increment manifest version
 
     int new_man_ver = atoi(manifestHead->versionNum);
@@ -1181,7 +1191,7 @@ int push(char* token, int clientfd)
     manifestFD = open(manifestPath, O_RDWR | O_CREAT | O_TRUNC, 00600 );
     if(manifestFD == -1)
     {
-        printf("Sending client: er:Manifest does not exist on server\n");
+        //printf("Sending client: er:Manifest does not exist on server\n");
         untar_project(projectName, old_manifest_version);
         sendMessage("er:Manifest does not exist on server", clientfd);
         return 0;
@@ -1197,7 +1207,7 @@ int push(char* token, int clientfd)
     manifestFD = open(manifestPath, O_RDONLY);
     if(manifestFD == -1 )
     {
-        printf("Sending client: er: No manifest found, push failed\n");
+        //printf("Sending client: er: No manifest found, push failed\n");
         untar_project(projectName, old_manifest_version);
         sendMessage("er: No manifest found, push failed", clientfd);
         return 0;
@@ -1216,7 +1226,7 @@ int push(char* token, int clientfd)
     strcat(finalMessage, manifest_len);
     strcat(finalMessage, ":");
     strcat(finalMessage, manifestContents);
-    printf("The finalMessage is: %s\n", finalMessage);
+    //printf("The finalMessage is: %s\n", finalMessage);
     sendMessage(finalMessage, clientfd);
     close(manifestFD);
     //free(finalMessage);
@@ -1226,7 +1236,7 @@ int push(char* token, int clientfd)
 
 int history(char* token, int clientfd)
 {
-    printf("Client sent %s\n", &token[3]);
+    //printf("Client sent %s\n", &token[3]);
     token = &token[3];  
     int index = 0;
     char* project_name_length = (char*)malloc(sizeof(char) * 100);
@@ -1258,7 +1268,7 @@ int history(char* token, int clientfd)
 
     if(!isDirectoryExists(projectPath))
     {
-        printf("Project could not be found on the server");
+        //printf("Project could not be found on the server");
         sendMessage("er: Project could not be found on the server", clientfd);
         return 0;
     }
@@ -1278,14 +1288,14 @@ int history(char* token, int clientfd)
     strcat(finalMessage, ":");
     strcat(finalMessage, historyContents);
     close(historyFD);
-    printf("Sending client: %s\n", finalMessage);
+    //printf("Sending client: %s\n", finalMessage);
     sendMessage(finalMessage, clientfd);
     
 }
 
 int rollback(char* token, int clientfd)
 {
-    printf("Client sent %s\n", &token[3]);
+    //printf("Client sent %s\n", &token[3]);
     token = &token[3];
 
     int index = 0;
@@ -1318,7 +1328,7 @@ int rollback(char* token, int clientfd)
 
     if(!isDirectoryExists(projectPath))
     {
-        printf("Project could not be found on the server");
+        //printf("Project could not be found on the server");
         sendMessage("er: Project could not be found on the server", clientfd);
         return 0;
     }
@@ -1334,7 +1344,7 @@ int rollback(char* token, int clientfd)
     }
     version_length[strIndex] = '\0';
     int version_len = atoi(version_length);
-    printf("version_len is %d\n", version_len);
+    //printf("version_len is %d\n", version_len);
     index++; // skip : after version name length
     strIndex = 0;
     char* projectVersion = (char*)malloc(sizeof(char) * (version_len + 1));
@@ -1349,12 +1359,12 @@ int rollback(char* token, int clientfd)
 
     free(project_name_length);
     free(version_length);
-    printf("Project name is: %s\n", projectName);
-    printf("Project version is: %s\n", projectVersion);
+    //printf("Project name is: %s\n", projectName);
+    //printf("Project version is: %s\n", projectVersion);
 
     if(canRollback(projectName, projectVersion) == 0)
     {
-        printf("Can not rollback to version %s\n", projectVersion);
+        //printf("Can not rollback to version %s\n", projectVersion);
         sendMessage("er: Can not rollback to version greater than or equal to current project version on the server", clientfd);
     }
     else
@@ -1392,7 +1402,7 @@ int update(char* token, int clientfd)
 
 int upgrade(char* token, int clientfd)
 {
-    printf("Client sent %s\n", &token[3]);
+    //printf("Client sent %s\n", &token[3]);
     token = &token[3];  
     int index = 0;
     char* project_name_length = (char*)malloc(sizeof(char) * 100);
@@ -1424,7 +1434,7 @@ int upgrade(char* token, int clientfd)
 
     if(!isDirectoryExists(projectPath))
     {
-        printf("Project could not be found on the server");
+        //printf("Project could not be found on the server");
         sendMessage("er: Project could not be found on the server", clientfd);
         free(projectPath);
         return 0;
@@ -1564,10 +1574,12 @@ int upgrade(char* token, int clientfd)
     free(projectPath);
 }
 
-int socketStuff(int fd)
-{ 
+void* clientComm(void* args)
+{
+    pthread_mutex_lock(&thread_lock);
+    int fd = *((int*) args);  //dereference clientfd from args
     char* buffer = readMessage(buffer, fd);
-    printf("%s\n", buffer);
+    //printf("%s\n", buffer);
     char* tokens = strtok(buffer, ":");
 
     if(strcmp(tokens, "cr") == 0)
@@ -1595,7 +1607,9 @@ int socketStuff(int fd)
     close(fd);
 
     free(buffer);
-    return 0;
+    
+    pthread_mutex_unlock(&thread_lock);
+    pthread_exit(NULL);
 }
 
 int main(int argc, char *argv[])
@@ -1606,6 +1620,7 @@ int main(int argc, char *argv[])
 
     clientIds = 0;
     commitNodes = NULL;
+    pthread_mutex_init(&thread_lock, NULL);
 
     if(argc < 2) 
     {
@@ -1625,6 +1640,8 @@ int main(int argc, char *argv[])
     listen(sockfd,5);
     clilen = sizeof(cli_addr);
 
+    threadFront = NULL;
+
     while(1)
     {
         newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
@@ -1632,10 +1649,18 @@ int main(int argc, char *argv[])
           error("ERROR on accept");
         else
         {
-            printf("Connected to Client: %d\n", newsockfd);
-            socketStuff(newsockfd);
+            thread_node* temp = (thread_node*) malloc(sizeof(thread_node));
+            temp->next = threadFront;
+            threadFront = temp;
+
+            if(pthread_create(&temp->thread_id, NULL, clientComm, &newsockfd) != 0)
+                printf("Cannot create thread\n");
+            else
+                printf("Connected to Client: %d\n", newsockfd);
         }
-    } 
+    }
+
+    pthread_exit(NULL); 
      
-     return 0; 
+    return 0; 
 }
