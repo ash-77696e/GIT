@@ -11,6 +11,7 @@
 #include <string.h>
 #include <openssl/md5.h>
 #include <errno.h>
+#include <stdbool.h>
 #include "structs.h"
 #include "IO.h"
 
@@ -19,6 +20,27 @@ void error(char *msg)
 {
     perror(msg);
     exit(0);
+}
+
+bool isNumber(char* str)
+{
+    int i = 0;
+
+    while(str[i] != '\0')
+    {
+        if(!isdigit(str[i]))
+        {
+            if(i == 0 && str[i] == '-')
+            {
+                i++;
+                continue;
+            }
+            return false;  
+        }
+        i++;
+    }
+
+    return true;
 }
 
 // uses an MD5 hashing algorithm to get the MD5 hash of a string passed into the function
@@ -534,6 +556,7 @@ char* readMessage(char* buffer, int fd)
     return msg;
 }
 
+//makes path for given filepath
 void makePath(char* filePath)
 {
     char* endIndex = strrchr(filePath, '/');
@@ -553,6 +576,7 @@ void makePath(char* filePath)
     system(command);
 }
 
+//given a basepath, put all files in the path into a LL
 void createFileLL(char* basePath, FileNode** fileRoot)
 {
     DIR* dir = opendir(basePath);
@@ -608,6 +632,7 @@ void createFileLL(char* basePath, FileNode** fileRoot)
     closedir(dir);
 }
 
+//given a buffer of file contents, create files
 void createSentFiles(char* buffer)
 {
     char numFilesStr[5];
@@ -903,13 +928,13 @@ int check_configure()
 
 int main(int argc, char* argv[])
 {
-    if(argc < 3)
+    if(argc < 3) //arg check
     {
         printf("Error: invalid number of arguments\n");
         return 0;
     }
 
-    if(argc > 4)
+    if(argc > 4) //arg check
     {
         printf("Error: invalid number of arguments\n");
         return 0;
@@ -917,7 +942,7 @@ int main(int argc, char* argv[])
 
     if(argc > 1) 
     {
-        if(strcmp(argv[1], "configure") == 0)
+        if(strcmp(argv[1], "configure") == 0) //config
         {
             if(argc != 4)
             {
@@ -934,7 +959,7 @@ int main(int argc, char* argv[])
             printf("Configure complete\n");
         }
 
-        else if(strcmp(argv[1], "create") == 0)
+        else if(strcmp(argv[1], "create") == 0) //create
         {
             if(argc != 3)
             {
@@ -1008,6 +1033,11 @@ int main(int argc, char* argv[])
 
         else if(strcmp(argv[1], "add") == 0)
         {
+            if(argc != 4)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
             int success = add(argv[2], argv[3]);
             if(success == 1)
             {
@@ -1020,6 +1050,11 @@ int main(int argc, char* argv[])
 
         else if(strcmp(argv[1], "remove") == 0)
         {
+            if(argc != 4)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
             int success = Remove(argv[2], argv[3]);
             if(success == 1)
             {
@@ -1032,6 +1067,13 @@ int main(int argc, char* argv[])
 
         else if(strcmp(argv[1], "currentversion") == 0)
         {
+            if(argc != 3)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
+            if(!check_configure())
+                return 0;
             int sockFD = create_socket();
             char* cvCommand = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 4));
             bzero(cvCommand, strlen(argv[2]) + 4);
@@ -1055,6 +1097,13 @@ int main(int argc, char* argv[])
 
         else if(strcmp(argv[1], "checkout") == 0)
         {
+            if(argc != 3)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
+            if(!check_configure())
+                return 0;
             if(isDirectoryExists(argv[2]))
             {
                 printf("Error: Project already exists on client\n");
@@ -1086,6 +1135,13 @@ int main(int argc, char* argv[])
 
         else if(strcmp(argv[1], "commit") == 0)
         {
+            if(argc != 3)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
+            if(!check_configure())
+                return 0;
             if(!isDirectoryExists(argv[2]))
             {
                 printf("Error: project does not exist\n");
@@ -1289,6 +1345,8 @@ int main(int argc, char* argv[])
                 printf("Error: invalid number of arguments\n");
                 return 0;
             }
+            if(!check_configure())
+                return 0;
             char* projectName = argv[2];
             char* commitPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 9));
             bzero(commitPath, strlen(projectName) + 9);
@@ -1548,6 +1606,8 @@ int main(int argc, char* argv[])
                 printf("Error: invalid number of arguments\n");
                 return 0;
             }
+            if(!check_configure())
+                return 0;
             char* projectName = argv[2];
             char* project_name_length = int_to_string(strlen(projectName));
 
@@ -1618,8 +1678,15 @@ int main(int argc, char* argv[])
                 printf("Error: invalid number of arguments\n");
                 return 0;
             }
+            if(!check_configure())
+                return 0;
             char* projectName = argv[2];
             char* projectVersion = argv[3];
+            if(!isNumber(projectVersion))
+            {
+                printf("Error: %s is not a valid nuber\n", projectVersion);
+                return 0;
+            }
             char* project_name_length = int_to_string(strlen(projectName));
             char* version_length = int_to_string(strlen(projectVersion));
 
@@ -1668,6 +1735,13 @@ int main(int argc, char* argv[])
 
         else if(strcmp(argv[1], "update") == 0)
         {
+            if(argc != 3)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
+            if(!check_configure())
+                return 0;
             if(!isDirectoryExists(argv[2]))
             {
                 printf("Project does not exist\n");
@@ -1783,6 +1857,13 @@ int main(int argc, char* argv[])
 
         else if(strcmp(argv[1], "upgrade") == 0)
         {
+            if(argc != 3)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
+            if(!check_configure())
+                return 0;
             if(!isDirectoryExists(argv[2]))
             {
                 printf("Error: Project does not exist\n");
@@ -1822,7 +1903,7 @@ int main(int argc, char* argv[])
 
             if(updateList->next == NULL)
             {
-                printf("Project is up to date\n");
+                printf("Error: Project is up to date, .Update is empty\n");
                 remove(updatePath);
                 free(updatePath);
                 free(updateContents);
@@ -1848,14 +1929,14 @@ int main(int argc, char* argv[])
 
             if(projectExists[0] == 'e' && projectExists[0] == 'r' && projectExists[0] == ':')
             {
-                printf("Server sent: %s\n", projectExists);
+                printf("Error: project does not exist on server\n");
                 free(projectExists);
                 close(serverFD);
                 return 0;
             }
             if(projectExists[0] == 's' && projectExists[0] == 'u' && projectExists[0] == ':')
             {
-                printf("Server sent: %s\n", projectExists);
+                //printf("Server sent: %s\n", projectExists);
             }
 
             int numFiles = 0;
@@ -1939,7 +2020,6 @@ int main(int argc, char* argv[])
             free(fileRequest);
 
             char* serverResponse = readMessage(serverResponse, serverFD);
-            
             createSentFiles(serverResponse);
             remove(updatePath);
             printf("Upgrade successful\n");

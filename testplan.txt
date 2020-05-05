@@ -1,0 +1,81 @@
+Ashwin Haridas, ah1058 (Section 06)
+Ritin Nair, rrn32 (Section 04)
+
+Test Plan
+
+Running "make test" will automatically set up appropriate directories, compile source files,
+and create an executable called "WTFtest". 
+To execute WTFtest, run "./WTFtest".
+
+Our general test plan was to run through a short simulation of our project,
+going through all of the commands to demonstrate basic functionality.  For all of the client commands, we expected STDOUT to
+show that the client connected to the server successfuly. We also wanted to see that appropriate
+sucess/failure messages are shown. Each command and what we expected from this test is listed below.
+
+0.  ./WTF create p1
+    This will output an error, as configure was not called yet
+
+1.  ./WTF configure $HOSTNAME 7990
+    This will create a .configure file on the client side, and output that it is complete
+
+2.  ./WTF create p1
+    This will create a blacnk project "p1" on both client and server side. The .Manifest files
+    on both sides will have the number 0 (to show that the project is version 0)
+
+3.  At this step we created a file, "test.txt", on the server side inside "p1" for future use
+
+4.  ./WTF add p1 test.txt
+    This will add "test.txt" into the client's .Manifest, with an "A" tag (to signify addition),
+    the path name, the file version number, and the hash of the file
+
+5.  ./WTF commit p1
+    This will create a .Commit file, showing that "test.txt" will be added to the server's project
+    on push. STDOUT will output an "A" followed by the pathname
+
+6. ./WTF push p1
+    This will apply the .Commit file on the server side. The server side will have "test.txt" in its project
+    and both sides will have their .Manifest files updated (incremented .Manifest version number), the old
+    .Commit file is deleted
+
+7. ./WTF currentversion p1
+    This will output to STDOUT the current version of the project on the server side (1) and each file
+    and its version number ("p1/test.txt" 0)
+
+8.  We add another file locally to the client (test2.txt)
+
+9.  ./WTF add p1 test2.txt
+    The new file is added to the client's manifest
+
+10. ./WTF remove p1 test.txt
+    The first file is removed to the client's manifest (this is signified by the "R" tag, for removed)
+
+11. ./WTF commit p1
+    A new .Commit is created, with information that test2.txt is added and test.txt is removed
+
+12. ./WTF push p1
+    Server applies changes from client's .Commit, which deletes test.txt, adds test2.txt, and updates both
+    the client and server's manifest files.
+
+13. ./WTF currentversion p1
+    The current version should be different, so we look at STDOUT and verify that the version
+    is now (2) along with the appropriate file names
+
+14. ./WTF history p1
+    This should output the details of all pushes (2) to the project
+
+15. ./WTF update p1
+    The server and client manifests are the same version, so STDOUT will show "Up to Date"
+
+16. ./WTF upgrade p1
+    This will display an error, because the .Update file is empty (since the project is up to date)
+
+17. ./WTF rollback p1 0
+    This will rollback the project on server side to version 0, which is an empty project
+
+18. Removes project on client side
+
+19. ./WTF checkout p1
+    This will copy the project from server to client, so client should also have empty p1
+
+17. ./WTF
+    Output invalid number of arguments

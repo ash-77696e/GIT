@@ -637,6 +637,7 @@ int destroy(char* token, int clientfd)
         sendMessage("er:Project does not exist on server", clientfd);
         return -1;
     }
+    expirePendingCommits(commitNodes, token);
     char* destroyCmd = (char*) malloc(sizeof(char) * (strlen(token) + 20));
     bzero(destroyCmd, strlen(token) + 20);
     sprintf(destroyCmd, "rm -rf \"%s\"", token);
@@ -1539,6 +1540,8 @@ int upgrade(char* token, int clientfd)
             fileRoot = tmpFile;
         }
 
+        strIndex++;
+
     }
 
     char* manifestPath = (char*) malloc(sizeof(char) * (strlen(projectName) + 12));
@@ -1643,7 +1646,7 @@ void signal_handler(int signum)
     while(ptr != NULL)
     {
         pthread_join(ptr->thread_id, NULL);
-        printf("Thread: %d removed\n", i);
+        printf("SERVER: Thread: %d removed\n", i);
         i++;
         thread_node* temp = ptr;
         ptr = ptr->next;
