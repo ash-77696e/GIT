@@ -12,7 +12,7 @@ IO.o: IO.c
 
 server:
 	mkdir server
-
+	
 client:
 	mkdir client
 

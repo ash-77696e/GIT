@@ -770,7 +770,10 @@ int checkout(char* token, int clientfd)
 int commit(char* token, int clientfd)
 {
     token = &token[3];
-    //printf("%s\n", token);
+    char* projName = (char*) malloc(sizeof(char) * strlen(token));
+    bzero(projName, strlen(token));
+    memcpy(projName, token, strlen(token));
+
     if(!isDirectoryExists(token))
     {
         sendMessage("er:Project does not exist", clientfd);
@@ -792,7 +795,7 @@ int commit(char* token, int clientfd)
     {
         return 0;
     }
-    commitNodes = addCommitNode(commitNodes, token, id, clientResponse);
+    commitNodes = addCommitNode(commitNodes, projName, id, clientResponse);
     //printf("%s\n", commitNodes->commit);
 }
 
