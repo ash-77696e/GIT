@@ -11,6 +11,7 @@
 #include <string.h>
 #include <pthread.h>
 #include "structs.h"
+#include <signal.h>
 #include "IO.h"
 #include <openssl/md5.h>
 
@@ -276,7 +277,6 @@ int sendMessage(char* cmd, int sockFD)
     bzero(msg, size + numDigits(size) + 2);
     sprintf(msg, "%d:", size);
     strcat(msg, cmd);
-    //printf("Message being sent is: %s\n", msg);
     write(sockFD, msg, strlen(msg));
 }
 
@@ -586,7 +586,7 @@ int create(char* token, int clientfd)
     token = &token[3];
     if(isDirectoryExists(token))
     {
-        sendMessage("er:Directory exists on server", clientfd);
+        sendMessage("er:Project exists on server", clientfd);
     }
     mkdir(token, 00777);
     char* manifestPath = (char*) malloc(sizeof(char) * (strlen(token) + 12));
@@ -611,10 +611,9 @@ int destroy(char* token, int clientfd)
     token = &token[3];
     if(!isDirectoryExists(token))
     {
-        sendMessage("er:Directory does not exist on server", clientfd);
+        sendMessage("er:Project does not exist on server", clientfd);
         return -1;
     }
-
     char* destroyCmd = (char*) malloc(sizeof(char) * (strlen(token) + 20));
     bzero(destroyCmd, strlen(token) + 20);
     sprintf(destroyCmd, "rm -rf \"%s\"", token);
@@ -1164,6 +1163,7 @@ int push(char* token, int clientfd)
                     //printf("Sending client: er:file not found in linked list\n");
                     untar_project(projectName, old_manifest_version);
                     sendMessage("er:file not found in linked list", clientfd);
+                    close(fileFD);
                     return 0;
                 }
                 write(fileFD, to_write, strlen(to_write));
@@ -1603,13 +1603,30 @@ void* clientComm(void* args)
     else if(strcmp(tokens, "ug") == 0)
         upgrade(buffer, fd);
 
-    printf("Client: %d disconnected\n", fd);
+    printf("SERVER: Client: %d disconnected\n", fd);
     close(fd);
 
     free(buffer);
     
     pthread_mutex_unlock(&thread_lock);
     pthread_exit(NULL);
+}
+
+void signal_handler(int signum)
+{
+    thread_node* ptr = threadFront;
+    int i = 0;
+    while(ptr != NULL)
+    {
+        pthread_join(ptr->thread_id, NULL);
+        printf("Thread: %d removed\n", i);
+        i++;
+        thread_node* temp = ptr;
+        ptr = ptr->next;
+        free(temp);
+    }
+    printf("Server has shut down\n");
+    exit(0);
 }
 
 int main(int argc, char *argv[])
@@ -1621,6 +1638,7 @@ int main(int argc, char *argv[])
     clientIds = 0;
     commitNodes = NULL;
     pthread_mutex_init(&thread_lock, NULL);
+    signal(SIGINT, signal_handler);    
 
     if(argc < 2) 
     {
@@ -1656,7 +1674,7 @@ int main(int argc, char *argv[])
             if(pthread_create(&temp->thread_id, NULL, clientComm, &newsockfd) != 0)
                 printf("Cannot create thread\n");
             else
-                printf("Connected to Client: %d\n", newsockfd);
+                printf("SERVER: Connected to Client: %d\n", newsockfd);
         }
     }
 

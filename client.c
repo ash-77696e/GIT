@@ -80,7 +80,7 @@ int create_socket()
         }
     } while (connectVal != 0);
     
-    printf("Connection successful!\n");
+    printf("Connection to server!\n");
     
     free(IP);
     
@@ -752,7 +752,7 @@ int updateCompareClientAndServer(node* serverManifest, node* clientEntry, int up
                     return 1;
                 }
             }
-            else if(strcmp(ptr->hash, clientEntry->hash) != 0)
+            if(strcmp(ptr->hash, clientEntry->hash) != 0)
             {
                 int fd = open(clientEntry->pathName, O_RDONLY);
                 char* fileContents = readFile(fileContents, fd);
@@ -857,18 +857,60 @@ void removeCommit(char* commitPath)
     system(remove_commit);
 }
 
+int check_configure()
+{
+    int configureFD = open(".configure", O_RDONLY);
+    if(configureFD == -1) 
+    {
+        printf("Error: Client was not configured\n");
+        return 0;
+    }
+    close(configureFD);
+    return 1;
+}
+
 int main(int argc, char* argv[])
 {
+    if(argc < 3)
+    {
+        printf("Error: invalid number of arguments\n");
+        return 0;
+    }
+
+    if(argc > 4)
+    {
+        printf("Error: invalid number of arguments\n");
+        return 0;
+    }
+
     if(argc > 1) 
     {
         if(strcmp(argv[1], "configure") == 0)
         {
+            if(argc != 4)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
+            struct hostent* result = gethostbyname(argv[2]);
+            if(result == NULL)
+            {
+                printf("Error: IP/hostname does not exist\n");
+                return 0;
+            }
             set_configure(argv[2], argv[3]);
             printf("Configure complete\n");
         }
 
-        if(strcmp(argv[1], "create") == 0)
+        else if(strcmp(argv[1], "create") == 0)
         {
+            if(argc != 3)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
+            if(!check_configure())
+                return 0;
             int sockFD = create_socket();
             char* createCommand = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 4));
             bzero(createCommand, strlen(argv[2])+4);
@@ -900,16 +942,22 @@ int main(int argc, char* argv[])
             close(sockFD);
         }
 
-        if(strcmp(argv[1], "destroy") == 0)
+        else if(strcmp(argv[1], "destroy") == 0)
         {
+            if(argc != 3)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
+            if(!check_configure())
+                return 0;
             int sockFD = create_socket();
             char* deleteCommand = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 4));
             bzero(deleteCommand, strlen(argv[2]) + 4);
             sprintf(deleteCommand, "de:%s", argv[2]);
             sendMessage(deleteCommand, sockFD);
 
-            char* serverResponse = (char*) malloc(sizeof(char) * 1000);
-            read(sockFD, serverResponse, 1000);
+            char* serverResponse = readMessage(serverResponse, sockFD);
             char* tokens = strtok(serverResponse, ":");
             if(strcmp(tokens, "sc") == 0)
             {
@@ -926,7 +974,7 @@ int main(int argc, char* argv[])
             close(sockFD);
         }
 
-        if(strcmp(argv[1], "add") == 0)
+        else if(strcmp(argv[1], "add") == 0)
         {
             int success = add(argv[2], argv[3]);
             if(success == 1)
@@ -938,7 +986,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        if(strcmp(argv[1], "remove") == 0)
+        else if(strcmp(argv[1], "remove") == 0)
         {
             int success = Remove(argv[2], argv[3]);
             if(success == 1)
@@ -950,7 +998,7 @@ int main(int argc, char* argv[])
             }
         }
 
-        if(strcmp(argv[1], "currentversion") == 0)
+        else if(strcmp(argv[1], "currentversion") == 0)
         {
             int sockFD = create_socket();
             char* cvCommand = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 4));
@@ -973,7 +1021,7 @@ int main(int argc, char* argv[])
             close(sockFD);
         }
 
-        if(strcmp(argv[1], "checkout") == 0)
+        else if(strcmp(argv[1], "checkout") == 0)
         {
             if(isDirectoryExists(argv[2]))
             {
@@ -1004,11 +1052,22 @@ int main(int argc, char* argv[])
             free(serverResponse);
         }
 
-        if(strcmp(argv[1], "commit") == 0)
+        else if(strcmp(argv[1], "commit") == 0)
         {
             if(!isDirectoryExists(argv[2]))
             {
                 printf("Error: project does not exist\n");
+                return 0;
+            }
+
+            char* conflictPath = (char*) malloc(sizeof(char) * (strlen(argv[2]) + 12));
+            bzero(conflictPath, strlen(argv[2]) + 12);
+            sprintf(conflictPath, "%s/.Conflict", argv[2]);
+            int conflictFD = open(conflictPath, O_RDONLY);
+            if(conflictFD != -1)
+            {
+                printf("Error: .Conflict exists\n");
+                close(conflictFD);
                 return 0;
             }
 
@@ -1190,7 +1249,8 @@ int main(int argc, char* argv[])
             close(sockFD);
             printf("Commit successful\n");
         }
-        if(strcmp(argv[1], "push") == 0 )
+        
+        else if(strcmp(argv[1], "push") == 0 )
         {
             char* projectName = argv[2];
             char* commitPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 9));
@@ -1443,7 +1503,8 @@ int main(int argc, char* argv[])
             }
             
         }
-        if(strcmp(argv[1] , "history") == 0)
+        
+        else if(strcmp(argv[1] , "history") == 0)
         {
             char* projectName = argv[2];
             char* project_name_length = int_to_string(strlen(projectName));
@@ -1507,7 +1568,8 @@ int main(int argc, char* argv[])
                 close(serverFD);
             }
         }
-        if(strcmp(argv[1], "rollback") == 0)
+        
+        else if(strcmp(argv[1], "rollback") == 0)
         {
             char* projectName = argv[2];
             char* projectVersion = argv[3];
@@ -1557,7 +1619,7 @@ int main(int argc, char* argv[])
 
         }
 
-        if(strcmp(argv[1], "update") == 0)
+        else if(strcmp(argv[1], "update") == 0)
         {
             if(!isDirectoryExists(argv[2]))
             {
@@ -1672,7 +1734,7 @@ int main(int argc, char* argv[])
             close(serverFD);
         }
 
-        if(strcmp(argv[1], "upgrade") == 0)
+        else if(strcmp(argv[1], "upgrade") == 0)
         {
             if(!isDirectoryExists(argv[2]))
             {
@@ -1825,7 +1887,7 @@ int main(int argc, char* argv[])
             }
 
             free_fileLL(fileList);
-            printf("Sending server request: %s\n", fileRequest);
+            //printf("Sending server request: %s\n", fileRequest);
             sendMessage(fileRequest, serverFD );
             free(fileRequest);
 
@@ -1836,7 +1898,10 @@ int main(int argc, char* argv[])
             printf("Upgrade successful\n");
             close(serverFD);
         }
-        
+        else
+        {
+            printf("Error: Invalid command entered\n");
+        }
     }
 
     return 0;
