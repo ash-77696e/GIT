@@ -112,9 +112,13 @@ int get_configure(char* IP, int* port)
 node* nullNode(node* tmp)
 {
     tmp->status = malloc(sizeof(char) * 20);
+    bzero(tmp->status, 20);
     tmp->pathName = malloc(sizeof(char) * 1000);
+    bzero(tmp->pathName, 1000);
     tmp->versionNum = malloc(sizeof(char) * 1000);
+    bzero(tmp->versionNum, 1000);
     tmp->hash = malloc(sizeof(char) * 1000);
+    bzero(tmp->hash, 1000);
     tmp->next = NULL;
     return tmp;
 }
@@ -1252,6 +1256,11 @@ int main(int argc, char* argv[])
         
         else if(strcmp(argv[1], "push") == 0 )
         {
+            if(argc != 3)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
             char* projectName = argv[2];
             char* commitPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 9));
             bzero(commitPath, strlen(projectName) + 9);
@@ -1506,6 +1515,11 @@ int main(int argc, char* argv[])
         
         else if(strcmp(argv[1] , "history") == 0)
         {
+            if(argc != 3)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
             char* projectName = argv[2];
             char* project_name_length = int_to_string(strlen(projectName));
 
@@ -1571,6 +1585,11 @@ int main(int argc, char* argv[])
         
         else if(strcmp(argv[1], "rollback") == 0)
         {
+            if(argc != 4)
+            {
+                printf("Error: invalid number of arguments\n");
+                return 0;
+            }
             char* projectName = argv[2];
             char* projectVersion = argv[3];
             char* project_name_length = int_to_string(strlen(projectName));

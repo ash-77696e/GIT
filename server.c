@@ -36,9 +36,13 @@ void error(char *msg)
 node* nullNode(node* tmp)
 {
     tmp->status = malloc(sizeof(char) * 20);
-    tmp->pathName = malloc(sizeof(char) * 20);
-    tmp->versionNum = malloc(sizeof(char) * 20);
-    tmp->hash = malloc(sizeof(char) * 20);
+    bzero(tmp->status, 20);
+    tmp->pathName = malloc(sizeof(char) * 1000);
+    bzero(tmp->pathName, 1000);
+    tmp->versionNum = malloc(sizeof(char) * 1000);
+    bzero(tmp->versionNum, 1000);
+    tmp->hash = malloc(sizeof(char) * 1000);
+    bzero(tmp->hash, 1000);
     tmp->next = NULL;
     return tmp;
 }
@@ -531,7 +535,7 @@ void addToHistory(node* commitHead, char* old_manifest_version, char* projectNam
         write(historyFD, "\n", 1);
         ptr = ptr->next;
     }
-    write(historyFD, "\n", 1);
+    //write(historyFD, "\n", 1);
     close(historyFD);
 }
 
@@ -1081,6 +1085,7 @@ int push(char* token, int clientfd)
         }
         else 
         {
+            //printf("cmt_ptr->status is %s\n", cmt_ptr->status); // delete later
             if(strcmp(cmt_ptr->status, "A") == 0) // add file to project directory 
             {
                 // write creates new file in project directory
@@ -1226,9 +1231,9 @@ int push(char* token, int clientfd)
     strcat(finalMessage, manifest_len);
     strcat(finalMessage, ":");
     strcat(finalMessage, manifestContents);
+    close(manifestFD);
     //printf("The finalMessage is: %s\n", finalMessage);
     sendMessage(finalMessage, clientfd);
-    close(manifestFD);
     //free(finalMessage);
     return 0;
     
