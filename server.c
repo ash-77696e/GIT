@@ -359,6 +359,7 @@ void createFileLL(char* basePath, FileNode** fileRoot)
     closedir(dir);
 }
 
+// adds a pending commit to the global list of pending commits on the server
 CommitNode* addCommitNode(CommitNode* head, char* projName, int clientID, char* commit)
 {
     if(head == NULL)
@@ -380,6 +381,7 @@ CommitNode* addCommitNode(CommitNode* head, char* projName, int clientID, char* 
     return head;
 }
 
+// returns the file contents of a file after searching for that file in a FileNode linked list with its path name as the key
 char* search_in_fileLL(FileNode* fileHead, char* pathName)
 {
     FileNode* ptr = fileHead;
@@ -394,6 +396,7 @@ char* search_in_fileLL(FileNode* fileHead, char* pathName)
     return NULL; // if no match is found
 }
 
+// deletes CommitNodes from the list of pending commits if they have the same project name as the argument passed in
 CommitNode* expirePendingCommits(CommitNode* head, char* projectName) // returns new head of pending commit list
 {
     int deleteHead = 0; // if head should be deleted then delete the head after everything else
@@ -429,6 +432,9 @@ CommitNode* expirePendingCommits(CommitNode* head, char* projectName) // returns
     return head;
 }
 
+/*  reverts a project back to the version specified by the versionNum argument by untar'ing the corresponding compressed 
+    version of it in the project's backup folder
+*/
 void untar_project(char* projectName, char* versionNum)
 {
     // move tar to current working directory
@@ -467,6 +473,7 @@ void untar_project(char* projectName, char* versionNum)
 
 }
 
+// searches in a linked list with the path name as the key and returns the node with the matching path name
 node* search_in_manLL(node* manifestHead, char* pathName)
 {
     node* ptr = manifestHead;
@@ -481,6 +488,7 @@ node* search_in_manLL(node* manifestHead, char* pathName)
     return ptr;
 }
 
+// deletes a node from the manifest linked list that has the same path name as the key sent in to the function
 node* remove_from_manLL(node* manifestHead, char* pathName)
 {
     node* ptr = manifestHead;
@@ -499,6 +507,11 @@ node* remove_from_manLL(node* manifestHead, char* pathName)
 
 }
 
+/*  updates the contents of a manifest node
+    resets the status to "-"
+    assigns new file contents based on what the client sent the server
+    rehashes based on the new file contents
+*/
 node* update_manifest_node(node* manifestHead, node* cmt_ptr, char* to_write)
 {
     node* manifest_node = search_in_manLL(manifestHead, cmt_ptr->pathName);
@@ -512,6 +525,7 @@ node* update_manifest_node(node* manifestHead, node* cmt_ptr, char* to_write)
     return manifestHead;
 }
 
+// adds to a .History file the operations done by a successful push
 void addToHistory(node* commitHead, char* old_manifest_version, char* projectName)
 {
     char* historyPath = (char*)malloc(sizeof(char) * (strlen(projectName) + 10 ));
@@ -539,6 +553,7 @@ void addToHistory(node* commitHead, char* old_manifest_version, char* projectNam
     close(historyFD);
 }
 
+// makes a path name with .Manifest appended to a project name and separated by a /
 char* getManifestPath(char* projectName)
 {
     char* result = malloc(sizeof(char) * ( strlen(projectName) + 11));
@@ -549,6 +564,9 @@ char* getManifestPath(char* projectName)
     return result;
 }
 
+/*  determines if the rollback command is viable based on if the version requested is less than the current manifest version
+    on the server
+*/
 int canRollback(char* projectName, char* projectVersion)
 {
     int manifestFD = open(getManifestPath(projectName), O_RDONLY);
@@ -577,6 +595,7 @@ int canRollback(char* projectName, char* projectVersion)
     
 }
 
+// deletes the backups folder if it is empty
 void deleteBackups(char* projectName)
 {
     char* cmd = (char*)malloc(sizeof(char) * (strlen(projectName) + 15));

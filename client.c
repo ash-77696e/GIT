@@ -14,12 +14,14 @@
 #include "structs.h"
 #include "IO.h"
 
-void error(char *msg)
+// prints an error message based on the buffer passed in and exits the program with the exit(0)
+void error(char *msg) 
 {
     perror(msg);
     exit(0);
 }
 
+// uses an MD5 hashing algorithm to get the MD5 hash of a string passed into the function
 char* getHash(char* fileContents)
 {
     unsigned char* result = malloc(sizeof(char) * strlen(fileContents));
@@ -42,6 +44,7 @@ char* getHash(char* fileContents)
     return hashedStr;
 }
 
+// creates a socket to connect to the server
 int create_socket()
 {
     int sockfd, n, portno;
@@ -87,6 +90,7 @@ int create_socket()
     return sockfd;
 }
 
+// writes the IP/hostname and port number to a .configure file in the current directory
 int set_configure(char* IP, char* port)
 {
     int fd = open("./.configure", O_RDWR | O_CREAT | O_TRUNC, 00600);
@@ -96,6 +100,7 @@ int set_configure(char* IP, char* port)
     close(fd);
 }
 
+// gets the port number from the .configure file
 int get_configure(char* IP, int* port)
 {
     int fd = open("./.configure", O_RDONLY);
@@ -109,6 +114,9 @@ int get_configure(char* IP, int* port)
     close(fd);
 }
 
+/*  initializes a new node to have all it's field malloc'd and its next pointer set to NULL
+    used in manifest_to_LL to make new nodes
+*/
 node* nullNode(node* tmp)
 {
     tmp->status = malloc(sizeof(char) * 20);
@@ -123,6 +131,9 @@ node* nullNode(node* tmp)
     return tmp;
 }
 
+/* creates a string corresponding to a line that will be written to a .Manifest file
+   used in LL_to_manifest
+*/ 
 char* manifestLine(char* string, node* ptr)
 {
     strcpy(string, ptr->status);
@@ -136,6 +147,7 @@ char* manifestLine(char* string, node* ptr)
     return string;
 }
 
+// creates a string that has .Manifest appended to the project name with a / separating them
 char* getManifestPath(char* projectName)
 {
     char* result = malloc(sizeof(char) * ( strlen(projectName) + 11));
@@ -146,6 +158,7 @@ char* getManifestPath(char* projectName)
     return result;
 }
 
+// creates a string that has some file path appended to the project name with a / separating them
 char* filePath(char* projectName, char* fileName)
 {
     char* result = malloc(sizeof(char) * ( strlen(projectName) + strlen(fileName) + 2));
@@ -156,6 +169,10 @@ char* filePath(char* projectName, char* fileName)
     return result; 
 }
 
+/*  builds a linked list from a stream of file contents
+    each node of the linked list represents a line from the file
+    the fields of the nodes are status, path name, version number, and hash of the file in the corresponding line
+*/
 node* manifest_to_LL(char* manifestContents)
 {
     int index = 0;
@@ -253,6 +270,9 @@ node* manifest_to_LL(char* manifestContents)
     return head;
 }
 
+/*  writes the contents of the linked list back to a file
+    used to create or overwrite the the contents of .Manifest
+*/
 void LL_to_manifest(node* head, int fd)
 {
     node* ptr = head;
@@ -277,7 +297,7 @@ void LL_to_manifest(node* head, int fd)
 }
 
 
-
+// frees a linked list
 void freeList(node* head)
 {
     node* ptr = head;
@@ -295,7 +315,7 @@ void freeList(node* head)
     }
 }
 
-
+// adds new entries to .Manifest if the files do not already exist there and mark them with the status "A"
 int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
 { 
     if(!isDirectoryExists(projectName))
@@ -401,6 +421,7 @@ int add(char* projectName, char* fileName) // returns 1 on success 0 on failure
 
 }
 
+// marks the file in .Manifest that matches the file name with the status "R" for future commit and push calls
 int Remove(char* projectName, char* fileName)
 {
     if(!isDirectoryExists(projectName))
@@ -459,6 +480,7 @@ int Remove(char* projectName, char* fileName)
     
 }
 
+// returns the number of digits in a number
 int numDigits(int num)
 {
     int count = 0;
@@ -471,6 +493,7 @@ int numDigits(int num)
     return count;
 }
 
+// sends a message to the client from the server or from the server to the client
 int sendMessage(char* cmd, int sockFD)
 {
     int size = strlen(cmd);
@@ -481,6 +504,7 @@ int sendMessage(char* cmd, int sockFD)
     write(sockFD, msg, strlen(msg));
 }
 
+// reads a message to the client from the server or from the server to the client
 char* readMessage(char* buffer, int fd)
 {
     int status = 0;
@@ -830,6 +854,7 @@ int updateCompareServerAndClient(node* clientManifest, node* serverEntry, int fd
     return 1;
 }
 
+// makes a string representation of the integer passed into the function
 char* int_to_string(int x)
 {
     char* str = (char*)malloc(sizeof(char) * (numDigits(x) + 1));
@@ -838,6 +863,7 @@ char* int_to_string(int x)
     return str;
 }
 
+// frees a FileNode linked list
 void free_fileLL(FileNode* fileHead)
 {
     FileNode* fptr = fileHead;
@@ -853,6 +879,7 @@ void free_fileLL(FileNode* fileHead)
     }
 }
 
+// deletes the .Commit file in the client after a push call is successfully completed
 void removeCommit(char* commitPath)
 {
     char* remove_commit = (char*)malloc(sizeof(char) * (strlen(commitPath) + 7));
@@ -861,6 +888,7 @@ void removeCommit(char* commitPath)
     system(remove_commit);
 }
 
+// checks if a .configure file exists, and prompts the user to call configure first if it was not
 int check_configure()
 {
     int configureFD = open(".configure", O_RDONLY);
