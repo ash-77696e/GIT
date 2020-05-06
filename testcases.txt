@@ -1,0 +1,122 @@
+Ashwin Haridas, ah1058 (Section 06)
+Ritin Nair, rrn32 (Section 04)
+
+Test Cases
+
+These were the test cases we tried to ensure that the program was succesfully passing basic, advanced, and error related test cases
+
+Configure:
+	Basic Test:
+		We tested to see if ./WTF configure <host name> <port number> would result in a .configure file with the host name and port number.
+	Advanced Test:
+		We tested to if running configure with an IP address instead of a host name would write the IP address and port number to the .configure file.
+	Error Test:
+		We tested to see if running ./WTF configure with the wrong number of arguments would inform the user that they entered an invalid number of arguments.
+
+Checkout:
+	Basic Test:
+		We tested to see if checkout worked when getting a project from the server that only had files in it. The expected result was to have the project copied over
+		to the client.
+	Advanced Test:
+		We tested to see if checkout worked when getting a project from the served that had subdirectories with files, and nested subdirectories with files.
+		This was to ensure that the subdirectory paths were being made in the client's local copy of the project that it obtained from the server as well.
+	Error Test:
+		We tested to see if checkout would result in an error because the client already had a local copy of the project or because the project did not exist on the server.
+		These would both inform the user of an error so they could react accordingly.
+
+Update:
+	Basic Test:
+		We tested to see if update worked when the server and client manifests were identical. The expected result of this was that the .Update file would be empty.
+	Advanced Test:
+		We tested to see if there were entries that belonged to the server's manifest and were not in the client's manifest and vice versa. This was to see if the
+		.Update file had the status, file path name, file version number, and server hash of the file written to it. We also tested a update with a project that had its
+		live hash of some of its files changed when the server also had changes for the project. This was to make sure the function was writing to the .Conflict file 
+		properly. 
+	Error Test:
+		We tested to see if update would result in an error because the project did not exist on the server and inform the user of why an error occurred. 
+
+Upgrade:
+	Basic Test:
+		We tested to see if upgrade worked when the server's copy of a project had files added to it. The expected result of this was that the client's copy of the project would
+		also get these new files added to it.
+	Advanced Test:
+		We tested to see if upgrade worked when the server's copy of a project had files modified, subdirectories and files in those subdirectories added, and other files removed.
+		This was to see if the add, delete, and modify functionalities of upgrade all worked when performed together in one test.
+	Error Test:
+		We tested to see if upgrade resulted in an error when because the project did not exist on the server or because there was a .Conflict file that existed in the 
+		client's directory. This was to see if the user would be informed about why the upgrade command failed.
+
+Commit:
+	Basic Test:
+		We tested to see if commit worked when new files were added to or removed from the client's local copy of the the project. The expected result of this was that
+		.Commit would have A <pathname> <version> <hash> or R <pathname> <version> <hash> written to it and that the user would be informed of this in the terminal.
+	Advanced Test:
+		We tested to see if modifying an already existing file's contents would result in commit writing M <pathname> <version> <hash> to .Commit and informing the 
+		user about this in the terminal.
+	Error Test:
+		We tested to see if commit would result in an error if the project did not exist on the server or if there was a non-empty .Update file in the client's directory.
+
+Push:
+	Basic Test:
+		We tested to see if pushing a project where the client's local copy had files added to it would result in this copy of the project and all its files being copied over to the 		server. 
+	Advanced Test:
+		We tested to see if pushing a project where the client's local copy had files and subdirectories that were added, modified, or removed would result in a copy of this 
+		project and its contents being copied over to the server. This accounted for the add, remove, and modify functionalities of push and if subdirectories could be moved over to 
+		the project's copy of the project and if the version of the files would be incremented on successful pushes.
+	Error Test:
+		We tested to see if push would result in an error with no .Commit file in the client's directory or if the project did not exist on the server.
+
+ Create:
+	Basic Test:
+		We tested to see if creating a project that did not exist on the client or server would work.
+	Advanced Test:
+		We tested to see if creating a project with a : in the name would work because this is the delimiter used when sending messages between the client and server.
+	Error Test: 
+		We tested to see if running create when the client or server had a copy of the project would result in an error and inform the user about it.
+
+Destroy:
+	Basic Test:
+		We tested to see if calling destroy for a project that existed on the server would delete the copy of that project on the server.
+	Advanced Test:
+		We tested to if destroy worked even if the client did not have a local copy of the project.
+	Error Test:
+		We tested to see if destroy would result in an error if the project did not exist on the server.
+Add:
+	Basic Test:
+		We tested to see if add would work when new files were added to the local copy of the project and it was called with one of these files. The expected result 
+		was that A <path name> <version> <hash> would be added to the .Manifest file.
+	Advanced Test:
+		We tested to see if add would fail if called with a file that already existed in the .Manifest file and replace that file's status with an M.
+	Error Test: 
+		We tested to see if add would result in an error with the incorrect number of arguments or with invalid path names.
+Remove:
+	Basic Test:
+		We tested to see if remove would result in the status of a file in the .Manifest file being changed to R.
+	Advanced Test:
+		We tested to see if remove would fail if the file did not exist in the .Manifest file.
+	Error Test:
+		We tested if remove would result in an error with the incorrect number of arguments being passed in.
+
+Currentversion:
+	Basic Test:
+		We tested if currentversion would output all of the files and version's of those files of a server's copy of a project to the client's terminal.
+	Advanced Test:
+		We tested to see if this function worked for projects with subdirectories in them and files in those subdirectories.
+	Error Test:
+		We tested to see if there was an error when the project did not exist on the server.
+
+History:
+	Basic Test:
+		We tested to see if running history would result in a log of all operations perfomed on successful pushes for a project being outputted in the client's terminal.
+	Advanced Test:
+		We tested to see if history worked on a project that had rollback called on it.
+	Error Test:
+		We tested to see if history resulted in an error if the project did not exist on the server and that it informed the user about the error.
+
+Rollback:
+	Basic Test:
+		We tested to see if rollback would revert the server's copy of a project back to its desired version. This was done with a valid version of the project that was stored in 			the backups directory of the project.
+	Advanced Test:
+		We tested if calling rollback with version 0 would delete the backups directory of a project since it would be empty after untar'ing the 0.tar version of the project.
+	Error Test:	
+		We tested if rollback failed when reverting to a version greater than or equal to the project's current version on the server or if the project did not exist on the server.	
