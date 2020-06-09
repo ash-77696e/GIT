@@ -1,7 +1,4 @@
 # GIT
-Where's the File?
-
-CS 214: Systems Programming
--- Assignment Last
+Verison Control System
 
 Ashwin Haridas & Ritin Nair
